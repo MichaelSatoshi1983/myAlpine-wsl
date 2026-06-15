@@ -1,0 +1,27 @@
+name: build-alpine-wsl
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * *"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: install tools
+        run: sudo apt-get update && sudo apt-get install -y wget tar
+
+      - name: build rootfs
+        run: |
+          chmod +x scripts/build.sh
+          sudo ./scripts/build.sh
+
+      - name: upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: alpine-wsl
+          path: alpine-wsl.tar.gz
