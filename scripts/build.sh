@@ -3,9 +3,11 @@ set -e
 
 ROOTFS="rootfs"
 
+ALPINE_VERSION="3.20.3"
+
 echo "download alpine rootfs"
 wget -qO alpine.tar.gz \
-  https://dl-cdn.alpinelinux.org/alpine/latest-stable/releases/x86_64/alpine-minirootfs-latest-x86_64.tar.gz
+https://dl-cdn.alpinelinux.org/alpine/v3.20/releases/x86_64/alpine-minirootfs-3.20.3-x86_64.tar.gz
 
 rm -rf "$ROOTFS"
 mkdir "$ROOTFS"
