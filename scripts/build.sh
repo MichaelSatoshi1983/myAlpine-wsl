@@ -3,13 +3,18 @@ set -e
 
 ROOTFS="rootfs"
 
-echo "fetch latest alpine release metadata"
+echo "fetch latest alpine version"
 
 LATEST_FILE=$(wget -qO- \
-https://dl-cdn.alpinelinux.org/alpine/latest-stable/releases/x86_64/latest-releases.yaml \
-| grep "file: alpine-minirootfs" \
-| head -n1 \
-| cut -d' ' -f2)
+https://dl-cdn.alpinelinux.org/alpine/latest-stable/releases/x86_64/ \
+| grep -oE 'alpine-minirootfs-[0-9]+\.[0-9]+\.[0-9]+-x86_64\.tar\.gz' \
+| sort -Vu \
+| tail -n1)
+
+if [ -z "$LATEST_FILE" ]; then
+  echo "failed to detect latest alpine release"
+  exit 1
+fi
 
 LATEST_VERSION=$(echo "$LATEST_FILE" \
 | sed -E 's/alpine-minirootfs-(.*)-x86_64.tar.gz/\1/')
