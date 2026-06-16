@@ -13,17 +13,19 @@ jobs:
       contents: write
 
     steps:
-      - name: checkout
+      - name: checkout repository
         uses: actions/checkout@v4
 
-      - name: install tools
+      - name: install dependencies
         run: sudo apt-get update && sudo apt-get install -y wget tar
 
-      - name: build rootfs
+      - name: make scripts executable
         run: |
           chmod +x scripts/build.sh
           chmod +x scripts/setup.sh
-          sudo ./scripts/build.sh
+
+      - name: build alpine rootfs
+        run: sudo ./scripts/build.sh
 
       - name: upload artifact
         uses: actions/upload-artifact@v4
