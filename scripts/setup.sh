@@ -48,10 +48,6 @@ echo "configure sudo"
 
 echo "michaelmason ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
-echo "prepare home directory"
-
-mkdir -p /home/michaelmason
-
 echo "configure wsl"
 
 cat > /etc/wsl.conf <<EOF
@@ -93,6 +89,8 @@ echo "create common directories"
 
 mkdir -p /home/michaelmason/go
 mkdir -p /home/michaelmason/.local/share/pnpm
+
+touch /home/michaelmason/.hushlogin
 
 echo "set ownership"
 
