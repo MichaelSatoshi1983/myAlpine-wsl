@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-REPO_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+REPO_DIR=$(CDPATH='' cd -- "$SCRIPT_DIR/.." && pwd)
 ROOTFS="$REPO_DIR/rootfs"
 ARCHIVE="$REPO_DIR/alpine.tar.gz"
 OUTPUT="$REPO_DIR/alpine-wsl.tar.gz"
