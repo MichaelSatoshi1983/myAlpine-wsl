@@ -2,7 +2,7 @@ name: build-alpine-wsl
 
 concurrency:
   group: alpine-wsl-build
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 on:
   pull_request:
