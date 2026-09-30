@@ -77,6 +77,9 @@ done
 echo "configure Alpine WSL rootfs"
 chroot "$ROOTFS" /usr/bin/env WSL_USERNAME="$WSL_USERNAME" /bin/sh /setup.sh
 
+echo "unmount virtual filesystems before packaging"
+unmount_rootfs_mounts
+
 mkdir -p "$ROOTFS/etc"
 {
   printf 'Alpine version: %s\n' "$LATEST_VERSION"
