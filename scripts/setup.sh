@@ -1,5 +1,7 @@
 #!/bin/sh
-set -e
+set -eu
+
+WSL_USERNAME=${WSL_USERNAME:-alpine}
 
 echo "update apk indexes"
 
@@ -14,6 +16,7 @@ apk add \
   curl \
   wget \
   sudo \
+  openrc \
   openssh \
   neovim \
   tmux \
@@ -31,8 +34,10 @@ apk add \
   ruby-bundler \
   nodejs \
   npm \
+  docker \
   docker-cli \
-  docker-compose
+  docker-cli-compose \
+  docker-openrc
 
 echo "install global npm packages"
 
@@ -42,17 +47,27 @@ npm install -g \
 
 echo "create user"
 
-adduser -D -s /bin/zsh michaelmason
+adduser -D -s /bin/zsh "$WSL_USERNAME"
 
 echo "configure sudo"
 
-echo "michaelmason ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+printf '%s ALL=(ALL) NOPASSWD:ALL\n' "$WSL_USERNAME" > /etc/sudoers.d/90-wsl-user
+chmod 0440 /etc/sudoers.d/90-wsl-user
+visudo -cf /etc/sudoers.d/90-wsl-user
+
+echo "configure Docker access"
+
+if ! grep -q '^docker:' /etc/group; then
+  addgroup -S docker
+fi
+addgroup "$WSL_USERNAME" docker
+rc-update add docker default
 
 echo "configure wsl"
 
 cat > /etc/wsl.conf <<EOF
 [boot]
-systemd=true
+command=/sbin/rc-service docker start
 
 [automount]
 enabled=true
@@ -67,12 +82,13 @@ appendWindowsPath=false
 generateResolvConf=true
 
 [user]
-default=michaelmason
+default=$WSL_USERNAME
 EOF
 
 echo "configure zsh environment"
 
-cat > /home/michaelmason/.zshrc <<'EOF'
+# shellcheck disable=SC2016
+cat > "/home/$WSL_USERNAME/.zshrc" <<'EOF'
 export EDITOR=nvim
 export VISUAL=nvim
 
@@ -87,13 +103,13 @@ EOF
 
 echo "create common directories"
 
-mkdir -p /home/michaelmason/go
-mkdir -p /home/michaelmason/.local/share/pnpm
+mkdir -p "/home/$WSL_USERNAME/go"
+mkdir -p "/home/$WSL_USERNAME/.local/share/pnpm"
 
-touch /home/michaelmason/.hushlogin
+touch "/home/$WSL_USERNAME/.hushlogin"
 
 echo "set ownership"
 
-chown -R michaelmason:michaelmason /home/michaelmason
+chown -R "$WSL_USERNAME:$WSL_USERNAME" "/home/$WSL_USERNAME"
 
 echo "done"
