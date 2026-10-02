@@ -7,12 +7,23 @@ concurrency:
 on:
   pull_request:
   workflow_dispatch:
+    inputs:
+      windows_version:
+        description: Windows host version
+        type: choice
+        default: windows10
+        options:
+          - windows10
+          - windows11
   schedule:
     - cron: "0 8 * * *"
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
+    env:
+      WSL_WINDOWS_VERSION: ${{ inputs.windows_version || 'windows10' }}
 
     permissions:
       contents: write
@@ -38,7 +49,7 @@ jobs:
       - name: build alpine rootfs
         env:
           BUILD_COMMIT: ${{ github.sha }}
-        run: sudo env BUILD_COMMIT="$BUILD_COMMIT" ./scripts/build.sh
+        run: sudo env BUILD_COMMIT="$BUILD_COMMIT" WSL_WINDOWS_VERSION="$WSL_WINDOWS_VERSION" ./scripts/build.sh
 
       - name: read and validate build metadata
         id: metadata
@@ -46,10 +57,25 @@ jobs:
           tar -xOf alpine-wsl.tar.gz ./etc/alpine-wsl-build > build-info.txt
           grep -Eq '^Alpine version: [0-9]+\.[0-9]+\.[0-9]+$' build-info.txt
           grep -Eq '^Source commit: [0-9a-f]{40}$' build-info.txt
+          grep -Fx "Windows target: $WSL_WINDOWS_VERSION" build-info.txt
+          tar -xOf alpine-wsl.tar.gz ./etc/wsl.conf > wsl.conf
+          if grep -Eq '^[[:space:]]*systemd[[:space:]]*=[[:space:]]*true' wsl.conf; then
+            echo "OpenRC builds must not enable systemd" >&2
+            exit 1
+          fi
+          if [ "$WSL_WINDOWS_VERSION" = windows10 ]; then
+            if grep -Fx '[boot]' wsl.conf; then
+              echo "Windows 10 builds must not contain boot settings" >&2
+              exit 1
+            fi
+          else
+            grep -Fx '[boot]' wsl.conf
+            grep -Fx 'command=/sbin/rc-service docker start' wsl.conf
+          fi
           grep -Eq '^Built at \(UTC\): [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$' build-info.txt
           alpine_version=$(sed -n 's/^Alpine version: //p' build-info.txt)
           echo "alpine_version=$alpine_version" >> "$GITHUB_OUTPUT"
-          echo "tag=alpine-v${alpine_version}-${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
+          echo "tag=alpine-v${alpine_version}-${GITHUB_SHA::8}-${WSL_WINDOWS_VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: upload artifact
         uses: actions/upload-artifact@v4
@@ -78,4 +104,5 @@ jobs:
           body: |
             Alpine version: ${{ steps.metadata.outputs.alpine_version }}
             Source commit: ${{ github.sha }}
+            Windows target: ${{ env.WSL_WINDOWS_VERSION }}
           files: alpine-wsl.tar.gz
