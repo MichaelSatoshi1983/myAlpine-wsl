@@ -22,6 +22,8 @@ docker run --rm hello-world
 
 The configured user belongs to the `docker` group so it can use Docker without `sudo`. Access to the Docker socket is effectively root access inside the distro. To stop the daemon, run `sudo rc-service docker stop`.
 
+Container output logs use the `json-file` driver with rotation: each file is limited to 10 MB and up to three files are retained per container (roughly 30 MB per container). This controls container stdout/stderr logs, not image, volume, or Docker daemon log sizes. Edit `/etc/docker/daemon.json` to change the defaults. After changing the settings on an existing installation, restart Docker and recreate containers to apply the new defaults. Individual containers or Compose services can override them. The build validates the daemon configuration without starting Docker.
+
 ## Build locally
 
 Build on an x86_64 Linux host with root privileges, `wget`, `tar`, and `mountpoint` installed. The build fetches the current Alpine stable minirootfs and writes `alpine-wsl.tar.gz` in the repository root.
@@ -35,6 +37,22 @@ sudo env WSL_USERNAME=developer BUILD_COMMIT="$(git rev-parse HEAD)" ./scripts/b
 ## Included tools
 
 The image includes Zsh, Bash, Git, OpenSSH, Neovim, tmux, common shell utilities, Go, Ruby, Node.js/npm, pnpm, TypeScript, Docker Engine, Docker CLI, and the Docker Compose CLI plugin. The image targets x86_64 only.
+
+## Network diagnostics
+
+The image includes `iproute2`, `bind-tools`, `iputils`, `traceroute`, `mtr`, `netcat-openbsd`, and `tcpdump`. Builds check that their main commands are available.
+
+```sh
+ip address                       # network interfaces and addresses
+ip route                         # routing table
+ss -lnt                          # listening TCP ports
+dig example.com                  # DNS lookup
+ping -c 4 1.1.1.1                # basic connectivity
+traceroute example.com           # route to a host
+mtr --report --report-cycles 10 example.com  # route and packet loss
+nc -vz -w 3 example.com 443       # TCP connection check
+sudo tcpdump -i any -nn -c 20     # capture 20 packets
+```
 
 ## Zsh
 
