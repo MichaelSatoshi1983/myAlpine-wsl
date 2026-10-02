@@ -36,6 +36,22 @@ sudo env WSL_USERNAME=developer BUILD_COMMIT="$(git rev-parse HEAD)" ./scripts/b
 
 The image includes Zsh, Bash, Git, OpenSSH, Neovim, tmux, common shell utilities, Go, Ruby, Node.js/npm, pnpm, TypeScript, Docker Engine, Docker CLI, and the Docker Compose CLI plugin. The image targets x86_64 only.
 
+## Zsh
+
+Zsh uses Oh My Zsh with the `robbyrussell` theme: a simple `➜ ~` prompt at home, with the current directory and Git branch elsewhere. No Nerd Font is required.
+
+Enabled plugins:
+
+- `zsh-autosuggestions`: suggests commands from history; press the right arrow to accept.
+- `zsh-syntax-highlighting`: highlights commands as you type.
+- `git`, `docker`, `docker-compose`: aliases and completions.
+- `sudo`: press Escape twice to prepend `sudo` to the current command.
+- `z`: jump to previously visited directories with `z <name>`.
+
+History is shared between terminals and retains up to 10,000 entries. Commands starting with a space are excluded from history. Edit `~/.zshrc` to change the theme or plugins.
+
+Oh My Zsh is installed at a pinned commit during the build. Automatic updates are disabled, so opening a terminal does not trigger an update check. The two external plugins are managed by Alpine's package manager. After import, update them with `sudo apk upgrade`; run `omz update` to update Oh My Zsh manually. Builds check Zsh syntax and verify that the theme and external plugins load as the configured user.
+
 ## Build metadata and releases
 
 `/etc/alpine-wsl-build` inside the image records the Alpine version, source commit, and UTC build time. GitHub Actions validates shell syntax and the packaged metadata. It uploads each successful build as an Actions artifact, but creates a GitHub Release only when there is no existing release for that Alpine version and source commit. Daily scheduled builds therefore do not create repeated releases for unchanged inputs.
