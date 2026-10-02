@@ -44,7 +44,8 @@ jobs:
         run: |
           sh -n scripts/build.sh
           sh -n scripts/setup.sh
-          shellcheck scripts/build.sh scripts/setup.sh
+          sh -n scripts/wsl-start-docker.sh
+          shellcheck scripts/build.sh scripts/setup.sh scripts/wsl-start-docker.sh
 
       - name: build alpine rootfs
         env:
@@ -70,7 +71,7 @@ jobs:
             fi
           else
             grep -Fx '[boot]' wsl.conf
-            grep -Fx 'command=/sbin/rc-service docker start' wsl.conf
+            grep -Fx 'command=/usr/local/sbin/wsl-start-docker' wsl.conf
           fi
           grep -Eq '^Built at \(UTC\): [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$' build-info.txt
           alpine_version=$(sed -n 's/^Alpine version: //p' build-info.txt)

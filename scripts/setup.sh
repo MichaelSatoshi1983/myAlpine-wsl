@@ -122,7 +122,7 @@ if [ "$WSL_WINDOWS_VERSION" = windows11 ]; then
   cat >> /etc/wsl.conf <<'EOF'
 
 [boot]
-command=/sbin/rc-service docker start
+command=/usr/local/sbin/wsl-start-docker
 EOF
 fi
 
@@ -160,6 +160,13 @@ HISTSIZE=10000
 SAVEHIST=10000
 setopt HIST_IGNORE_SPACE HIST_IGNORE_ALL_DUPS SHARE_HISTORY
 bindkey -e
+
+# Windows 10 cannot rely on wsl.conf's boot command. Start on shell entry.
+if [[ -n "${WSL_DISTRO_NAME:-}" && "${WSL_DOCKER_AUTOSTART:-1}" == 1 ]]; then
+  if ! sudo -n /usr/local/sbin/wsl-start-docker >/dev/null; then
+    print -u2 'Docker could not start; run sudo wsl-start-docker to inspect the error.'
+  fi
+fi
 
 source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
 # Keep syntax highlighting last so it sees the other plugins' widgets.

@@ -14,15 +14,17 @@ wsl -d Alpine
 
 The image defaults to the `alpine` user and Windows 10 compatibility. In GitHub Actions, choose `windows10` or `windows11` under **Run workflow**. Scheduled and PR builds default to `windows10`. Both configurations use OpenRC and leave systemd disabled.
 
-Windows 10 builds omit `[boot]` from `/etc/wsl.conf`. Start Docker manually inside Alpine:
+Windows 10 builds omit `[boot]` from `/etc/wsl.conf`. On both targets, entering an interactive Zsh session inside WSL starts Docker through OpenRC if it is not already started. The startup helper initializes OpenRC's runtime state because WSL's init does not run the normal OpenRC boot sequence. To start it manually or inspect a startup error:
 
 ```sh
-sudo rc-service docker start
+sudo wsl-start-docker
 docker version
 docker run --rm hello-world
 ```
 
-Windows 11 builds include the WSL boot command to start Docker when the distro starts; this also applies to supported Windows Server 2022 WSL installations. `rc-update add docker default` alone does not start services under WSL's default init. The Windows version option configures the downloaded image; it does not modify an already imported distro.
+Windows 11 builds also call the helper through the WSL boot command; this applies to supported Windows Server 2022 WSL installations. On Windows 10, Docker starts when the first interactive Zsh session opens, so running only a noninteractive `wsl --exec` command does not trigger it. `rc-update add docker default` alone does not start services under WSL's default init. The Windows version option configures the downloaded image; it does not modify an already imported distro.
+
+To disable shell-triggered Docker startup, add `export WSL_DOCKER_AUTOSTART=0` above the startup block in `~/.zshrc`. On Windows 11, also remove the `[boot]` command from `/etc/wsl.conf` if you want to disable automatic startup entirely.
 
 To edit an imported distro's settings, back up `/etc/wsl.conf` with `sudo cp /etc/wsl.conf /etc/wsl.conf.bak`, then run `sudo nvim /etc/wsl.conf`. For Windows 10, remove the `[boot]` section and its `command` entry. Do not add `systemd=true` to this OpenRC image. In PowerShell, run `wsl --terminate Alpine` and `wsl -d Alpine` to apply changes, replacing `Alpine` with your distro name. CPU and memory settings belong in Windows `%UserProfile%\.wslconfig` instead.
 
@@ -82,4 +84,4 @@ Oh My Zsh is installed at a pinned commit during the build. Automatic updates ar
 
 `/etc/alpine-wsl-build` inside the image records the Alpine version, source commit, Windows target, and UTC build time. GitHub Actions validates shell syntax, the packaged metadata, and the target's WSL configuration. It uploads each successful build as an Actions artifact, but creates a GitHub Release only when there is no existing release for that Alpine version, source commit, and Windows target. Release tags end with `windows10` or `windows11` so the two configurations have separate downloads. Daily scheduled builds therefore do not create repeated releases for unchanged inputs.
 
-The WSL startup command uses OpenRC (`rc-service docker start`); Alpine's default service manager is OpenRC. Docker Engine requires WSL 2 and working kernel support for containers. The Windows host's WSL kernel configuration can limit Docker features.
+The startup helper uses OpenRC (`rc-service --ifnotstarted docker start`); Alpine's default service manager is OpenRC. Docker Engine requires WSL 2 and working kernel support for containers. The Windows host's WSL kernel configuration can limit Docker features.
