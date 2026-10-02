@@ -19,6 +19,13 @@ apk add \
   git \
   curl \
   wget \
+  iproute2 \
+  bind-tools \
+  iputils \
+  traceroute \
+  mtr \
+  netcat-openbsd \
+  tcpdump \
   sudo \
   openrc \
   openssh \
@@ -66,6 +73,26 @@ if ! grep -q '^docker:' /etc/group; then
 fi
 addgroup "$WSL_USERNAME" docker
 rc-update add docker default
+
+echo "configure Docker log rotation"
+
+mkdir -p /etc/docker
+cat > /etc/docker/daemon.json <<'EOF'
+{
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "10m",
+    "max-file": "3"
+  }
+}
+EOF
+dockerd --validate --config-file=/etc/docker/daemon.json
+
+echo "validate network tools"
+
+for tool in ip ss dig nslookup ping traceroute mtr nc tcpdump; do
+  command -v "$tool" >/dev/null
+done
 
 echo "configure wsl"
 
