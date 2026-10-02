@@ -12,4 +12,5 @@ if [ ! -e /run/openrc/softlevel ]; then
   printf 'default\n' > /run/openrc/softlevel
 fi
 
-exec /sbin/rc-service --ifnotstarted docker start
+# WSL supplies networking, devices, and mounts; do not start host boot services.
+exec /sbin/rc-service --nodeps --ifnotstarted docker start
