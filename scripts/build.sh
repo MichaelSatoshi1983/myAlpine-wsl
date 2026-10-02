@@ -7,6 +7,11 @@ ROOTFS="$REPO_DIR/rootfs"
 ARCHIVE="$REPO_DIR/alpine.tar.gz"
 OUTPUT="$REPO_DIR/alpine-wsl.tar.gz"
 WSL_USERNAME=${WSL_USERNAME:-alpine}
+WSL_WINDOWS_VERSION=${WSL_WINDOWS_VERSION:-windows10}
+case "$WSL_WINDOWS_VERSION" in
+  windows10|windows11) ;;
+  *) echo "WSL_WINDOWS_VERSION must be windows10 or windows11" >&2; exit 2 ;;
+esac
 if [ -z "${BUILD_COMMIT:-}" ]; then
   BUILD_COMMIT=$(git -C "$REPO_DIR" rev-parse HEAD 2>/dev/null || printf 'unknown')
 fi
@@ -67,6 +72,9 @@ mkdir -p "$ROOTFS"
 tar -xzf "$ARCHIVE" -C "$ROOTFS"
 cp /etc/resolv.conf "$ROOTFS/etc/resolv.conf"
 cp "$SCRIPT_DIR/setup.sh" "$ROOTFS/setup.sh"
+mkdir -p "$ROOTFS/usr/local/sbin"
+cp "$SCRIPT_DIR/wsl-start-docker.sh" "$ROOTFS/usr/local/sbin/wsl-start-docker"
+chmod 0755 "$ROOTFS/usr/local/sbin/wsl-start-docker"
 chmod +x "$ROOTFS/setup.sh"
 
 echo "mount virtual filesystems"
@@ -75,7 +83,7 @@ for name in dev proc sys; do
 done
 
 echo "configure Alpine WSL rootfs"
-chroot "$ROOTFS" /usr/bin/env WSL_USERNAME="$WSL_USERNAME" /bin/sh /setup.sh
+chroot "$ROOTFS" /usr/bin/env WSL_USERNAME="$WSL_USERNAME" WSL_WINDOWS_VERSION="$WSL_WINDOWS_VERSION" /bin/sh /setup.sh
 
 echo "unmount virtual filesystems before packaging"
 unmount_rootfs_mounts
@@ -84,6 +92,7 @@ mkdir -p "$ROOTFS/etc"
 {
   printf 'Alpine version: %s\n' "$LATEST_VERSION"
   printf 'Source commit: %s\n' "$BUILD_COMMIT"
+  printf 'Windows target: %s\n' "$WSL_WINDOWS_VERSION"
   printf 'Built at (UTC): %s\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 } > "$ROOTFS/etc/alpine-wsl-build"
 

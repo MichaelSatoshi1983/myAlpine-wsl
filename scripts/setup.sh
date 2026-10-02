@@ -2,6 +2,11 @@
 set -eu
 
 WSL_USERNAME=${WSL_USERNAME:-alpine}
+WSL_WINDOWS_VERSION=${WSL_WINDOWS_VERSION:-windows10}
+case "$WSL_WINDOWS_VERSION" in
+  windows10|windows11) ;;
+  *) echo "WSL_WINDOWS_VERSION must be windows10 or windows11" >&2; exit 2 ;;
+esac
 OH_MY_ZSH_COMMIT=4d4cfc287e9d887b81242c0e431b5f49f9cec5c1
 
 echo "update apk indexes"
@@ -19,6 +24,13 @@ apk add \
   git \
   curl \
   wget \
+  iproute2 \
+  bind-tools \
+  iputils \
+  traceroute \
+  mtr \
+  netcat-openbsd \
+  tcpdump \
   sudo \
   openrc \
   openssh \
@@ -67,12 +79,29 @@ fi
 addgroup "$WSL_USERNAME" docker
 rc-update add docker default
 
+echo "configure Docker log rotation"
+
+mkdir -p /etc/docker
+cat > /etc/docker/daemon.json <<'EOF'
+{
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "10m",
+    "max-file": "3"
+  }
+}
+EOF
+dockerd --validate --config-file=/etc/docker/daemon.json
+
+echo "validate network tools"
+
+for tool in ip ss dig nslookup ping traceroute mtr nc tcpdump; do
+  command -v "$tool" >/dev/null
+done
+
 echo "configure wsl"
 
 cat > /etc/wsl.conf <<EOF
-[boot]
-command=/sbin/rc-service docker start
-
 [automount]
 enabled=true
 root=/mnt/
@@ -88,6 +117,14 @@ generateResolvConf=true
 [user]
 default=$WSL_USERNAME
 EOF
+
+if [ "$WSL_WINDOWS_VERSION" = windows11 ]; then
+  cat >> /etc/wsl.conf <<'EOF'
+
+[boot]
+command=/usr/local/sbin/wsl-start-docker
+EOF
+fi
 
 echo "configure zsh environment"
 
@@ -123,6 +160,13 @@ HISTSIZE=10000
 SAVEHIST=10000
 setopt HIST_IGNORE_SPACE HIST_IGNORE_ALL_DUPS SHARE_HISTORY
 bindkey -e
+
+# Windows 10 cannot rely on wsl.conf's boot command. Start on shell entry.
+if [[ -n "${WSL_DISTRO_NAME:-}" && "${WSL_DOCKER_AUTOSTART:-1}" == 1 ]]; then
+  if ! sudo -n /usr/local/sbin/wsl-start-docker >/dev/null; then
+    print -u2 'Docker could not start; run sudo wsl-start-docker to inspect the error.'
+  fi
+fi
 
 source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
 # Keep syntax highlighting last so it sees the other plugins' widgets.
