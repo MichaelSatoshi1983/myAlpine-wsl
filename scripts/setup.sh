@@ -2,6 +2,11 @@
 set -eu
 
 WSL_USERNAME=${WSL_USERNAME:-alpine}
+WSL_WINDOWS_VERSION=${WSL_WINDOWS_VERSION:-windows10}
+case "$WSL_WINDOWS_VERSION" in
+  windows10|windows11) ;;
+  *) echo "WSL_WINDOWS_VERSION must be windows10 or windows11" >&2; exit 2 ;;
+esac
 OH_MY_ZSH_COMMIT=4d4cfc287e9d887b81242c0e431b5f49f9cec5c1
 
 echo "update apk indexes"
@@ -97,9 +102,6 @@ done
 echo "configure wsl"
 
 cat > /etc/wsl.conf <<EOF
-[boot]
-command=/sbin/rc-service docker start
-
 [automount]
 enabled=true
 root=/mnt/
@@ -115,6 +117,14 @@ generateResolvConf=true
 [user]
 default=$WSL_USERNAME
 EOF
+
+if [ "$WSL_WINDOWS_VERSION" = windows11 ]; then
+  cat >> /etc/wsl.conf <<'EOF'
+
+[boot]
+command=/sbin/rc-service docker start
+EOF
+fi
 
 echo "configure zsh environment"
 
