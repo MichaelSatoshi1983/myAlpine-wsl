@@ -24,6 +24,7 @@ apk add \
   bash \
   git \
   curl \
+  jq \
   wget \
   iproute2 \
   bind-tools \
