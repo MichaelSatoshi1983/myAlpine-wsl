@@ -70,6 +70,8 @@ make_target_manifest() {
   done
 }
 manifest_inside_source() {
+  # This script runs inside the source distro; paths are validated before splitting.
+  # shellcheck disable=SC2016,SC2086
   "$WSL_EXE" --distribution "$SOURCE_DISTRO" --user root --exec sh -c '
     for rel do
       root="/$rel"
@@ -157,7 +159,11 @@ restore_source_accounts() {
           if [ -n "$existing_group_gid" ] && [ "$existing_group_gid" = "$extra_gid" ]; then
             addgroup "$name" "$extra_group" >/dev/null 2>&1 || :
           elif [ -z "$existing_group_gid" ] && [ -z "$existing_gid_name" ]; then
-            addgroup -g "$extra_gid" "$extra_group" >/dev/null 2>&1 && addgroup "$name" "$extra_group" >/dev/null 2>&1 || warn "Could not restore supplementary group $extra_group for $name."
+            if addgroup -g "$extra_gid" "$extra_group" >/dev/null 2>&1; then
+              addgroup "$name" "$extra_group" >/dev/null 2>&1 || warn "Could not restore supplementary group $extra_group for $name."
+            else
+              warn "Could not restore supplementary group $extra_group for $name."
+            fi
           else
             warn "Could not restore supplementary group $extra_group (GID $extra_gid conflicts in new Alpine)."
           fi ;;
@@ -203,7 +209,8 @@ while [ "$#" -gt 0 ]; do
       [ "$#" -ge 2 ] || fail "--include requires an absolute path inside the old distro"
       extra=$2
       case "$extra" in /*) extra=$(printf '%s' "$extra" | cut -c 2-) ;; *) fail "--include path must start with /" ;; esac
-      case "$extra" in *[!A-Za-z0-9_./-]*|*../*|../*|*/..) fail "custom path contains an unsupported character or '..'" ;; esac
+      case "$extra" in *[!A-Za-z0-9_./-]*) fail "custom path contains an unsupported character" ;; esac
+      case "/$extra/" in */../*) fail "custom path cannot contain a '..' component" ;; esac
       case "$extra" in etc|etc/*|bin|bin/*|sbin|sbin/*|lib|lib/*|lib64|lib64/*|proc|proc/*|sys|sys/*|dev|dev/*|run|run/*|tmp|tmp/*|mnt|mnt/*|media|media/*|boot|boot/*|usr|usr/*|var/lib/apk|var/lib/apk/*|var/lib/openrc|var/lib/openrc/*|var/lib/dbus|var/lib/dbus/*|var/lib/misc|var/lib/misc/*|var/lib/wsl-migrate|var/lib/wsl-migrate/*)
         fail "this system path cannot be added as user data: /$extra" ;;
       esac
@@ -279,7 +286,9 @@ if [ -n "$RESUME_ARCHIVE" ]; then
   CHECKSUM_FILE=$BACKUP_FILE.sha256
   PREVIOUS_DEFAULT_FILE=$BACKUP_FILE.previous-default
   SIZE_FILE=$BACKUP_FILE.sizes
-  [ -s "$CONTENT_MANIFEST" ] && [ -r "$CHECKSUM_FILE" ] && [ -r "$PREVIOUS_DEFAULT_FILE" ] && [ -r "$SIZE_FILE" ] || fail "resume archive sidecars are incomplete"
+  if [ ! -s "$CONTENT_MANIFEST" ] || [ ! -r "$CHECKSUM_FILE" ] || [ ! -r "$PREVIOUS_DEFAULT_FILE" ] || [ ! -r "$SIZE_FILE" ]; then
+    fail "resume archive sidecars are incomplete"
+  fi
   expected_sha=$(awk 'NR==1 {print $1}' "$CHECKSUM_FILE")
   [ "$(sha256sum "$BACKUP_FILE" | awk '{print $1}')" = "$expected_sha" ] || fail "resume archive checksum does not match"
   EXPORT_VALID=1
@@ -302,6 +311,8 @@ if [ -n "$RESUME_ARCHIVE" ]; then
 fi
 
 if [ -z "$RESUME_ARCHIVE" ]; then
+  # This script runs inside the source distro; paths are validated before splitting.
+  # shellcheck disable=SC2016,SC2086
   SIZE_OUTPUT=$("$WSL_EXE" --distribution "$SOURCE_DISTRO" --user root --exec sh -c '
     du -skx /
     total=0
@@ -450,7 +461,13 @@ if [ -s "$WORLD_FILE" ]; then
   apk update > "$STATE_DIR/apk-update.log" 2>&1 || { warn "Could not refresh APK indexes."; PACKAGE_WARNING=1; }
   : > "$STATE_DIR/apk-world-safe"
   while IFS= read -r package; do
-    case "$package" in ''|\#*) continue ;; *[!A-Za-z0-9+._:@<>~=,-]*) warn "Skipped unsupported APK entry: $package"; PACKAGE_WARNING=1 ;; *) printf '%s\n' "$package" >> "$STATE_DIR/apk-world-safe" ;; esac
+    case "$package" in ''|\#*) continue ;; esac
+    if ! printf '%s\n' "$package" | grep -Eq '^[A-Za-z0-9+._:@<>~=,-]+$'; then
+      warn "Skipped unsupported APK entry: $package"
+      PACKAGE_WARNING=1
+    else
+      printf '%s\n' "$package" >> "$STATE_DIR/apk-world-safe"
+    fi
   done < "$WORLD_FILE"
   set --
   while IFS= read -r package; do [ -n "$package" ] && set -- "$@" "$package"; done < "$STATE_DIR/apk-world-safe"
