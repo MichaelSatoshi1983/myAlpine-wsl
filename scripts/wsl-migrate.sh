@@ -421,7 +421,7 @@ SCRIPT_PATH=$0
 case "$SCRIPT_PATH" in */*) ;; *) SCRIPT_PATH=$(command -v "$SCRIPT_PATH") ;; esac
 [ -f "$SCRIPT_PATH" ] || fail "cannot locate the running script to install it in the clone"
 "$WSL_EXE" --distribution "$NEW_DISTRO" --user root --exec sh -c \
-  'set -e; umask 022; mkdir -p /usr/local/bin /etc/wsl-migrate; tmp=/usr/local/bin/.wsl-migrate.$; cat > "$tmp"; chmod 0755 "$tmp"; mv -f "$tmp" /usr/local/bin/wsl-migrate; printf "%s\\n" "$1" > /etc/wsl-migrate/previous-default' sh "$PREVIOUS_DEFAULT" < "$SCRIPT_PATH" || fail "could not install wsl-migrate in the clone; recovery details follow"
+  'set -e; umask 022; mkdir -p /usr/local/bin /etc/wsl-migrate; tmp=/usr/local/bin/.wsl-migrate.tmp; cat > "$tmp"; chmod 0755 "$tmp"; mv -f "$tmp" /usr/local/bin/wsl-migrate; printf "%s\n" "$1" > /etc/wsl-migrate/previous-default' sh "$PREVIOUS_DEFAULT" < "$SCRIPT_PATH" || fail "could not install wsl-migrate in the clone; recovery details follow"
 UTILITY_INSTALLED=1
 
 if ! "$WSL_EXE" --distribution "$NEW_DISTRO" --user root --exec sh -c \
@@ -525,6 +525,7 @@ echo "Export SHA-256: $EXPORT_SHA256"
 echo "Install location: $INSTALL_LOCATION"
 echo "The cloned /etc/wsl.conf and default user are preserved."
 echo "The actual previous default distro was: $PREVIOUS_DEFAULT"
+echo "The export checksum is retained at: $CHECKSUM_FILE"
 echo "Regular file contents under /home and /var/lib/docker were compared."
 echo "SSH host keys regenerated: $REFRESH_SSH_KEYS"
 echo "Start the clone with: wsl.exe --distribution $NEW_DISTRO"
@@ -534,7 +535,7 @@ case "$switch_answer" in
   y|Y|yes|YES)
     "$WSL_EXE" --set-default "$NEW_DISTRO"
     echo "Default WSL distro set to $NEW_DISTRO."
-    echo "To restore the actual previous default: wsl-migrate --rollback $PREVIOUS_DEFAULT"
+    echo "To restore the actual previous default: wsl-migrate --rollback"
     ;;
   *) echo "Default distro was not changed." ;;
 esac
