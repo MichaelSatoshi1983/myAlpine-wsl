@@ -16,6 +16,7 @@ apk update
 echo "install packages"
 
 apk add \
+  tar \
   zsh \
   zsh-autosuggestions \
   zsh-syntax-highlighting \
@@ -205,3 +206,4 @@ zsh -n "/home/$WSL_USERNAME/.zshrc"
 su - "$WSL_USERNAME" -c 'zsh -i -c '\''[[ $ZSH_THEME == robbyrussell ]] && (( $+functions[git_prompt_info] )) && (( $+functions[_zsh_autosuggest_start] )) && (( $+functions[_zsh_highlight] ))'\'''
 
 echo "done"
+
