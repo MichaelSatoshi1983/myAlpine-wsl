@@ -18,27 +18,20 @@ on:
   schedule:
     - cron: "0 8 * * *"
 
+permissions:
+  contents: read
+
 jobs:
-  build:
+  validate:
+    name: Validate scripts
     runs-on: ubuntu-latest
-
-    env:
-      WSL_WINDOWS_VERSION: ${{ inputs.windows_version || 'windows10' }}
-
-    permissions:
-      contents: write
 
     steps:
       - name: checkout repository
         uses: actions/checkout@v4
 
-      - name: install dependencies
-        run: sudo apt-get update && sudo apt-get install -y wget tar shellcheck
-
-      - name: make scripts executable
-        run: |
-          chmod +x scripts/build.sh
-          chmod +x scripts/setup.sh
+      - name: install ShellCheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
 
       - name: validate shell scripts
         run: |
@@ -47,10 +40,55 @@ jobs:
           sh -n scripts/wsl-start-docker.sh
           shellcheck scripts/build.sh scripts/setup.sh scripts/wsl-start-docker.sh
 
-      - name: build alpine rootfs
+  build:
+    name: Build root filesystem
+    needs: validate
+    runs-on: ubuntu-latest
+
+    env:
+      WSL_WINDOWS_VERSION: ${{ inputs.windows_version || 'windows10' }}
+
+    steps:
+      - name: checkout repository
+        uses: actions/checkout@v4
+
+      - name: install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y wget tar
+
+      - name: make scripts executable
+        run: |
+          chmod +x scripts/build.sh
+          chmod +x scripts/setup.sh
+
+      - name: build Alpine rootfs
         env:
           BUILD_COMMIT: ${{ github.sha }}
         run: sudo env BUILD_COMMIT="$BUILD_COMMIT" WSL_WINDOWS_VERSION="$WSL_WINDOWS_VERSION" ./scripts/build.sh
+
+      - name: upload root filesystem
+        uses: actions/upload-artifact@v4
+        with:
+          name: alpine-wsl
+          path: alpine-wsl.tar.gz
+          if-no-files-found: error
+
+  inspect:
+    name: Inspect build artifact
+    needs: build
+    runs-on: ubuntu-latest
+
+    outputs:
+      alpine_version: ${{ steps.metadata.outputs.alpine_version }}
+      tag: ${{ steps.metadata.outputs.tag }}
+
+    env:
+      WSL_WINDOWS_VERSION: ${{ inputs.windows_version || 'windows10' }}
+
+    steps:
+      - name: download root filesystem
+        uses: actions/download-artifact@v4
+        with:
+          name: alpine-wsl
 
       - name: read and validate build metadata
         id: metadata
@@ -78,32 +116,46 @@ jobs:
           echo "alpine_version=$alpine_version" >> "$GITHUB_OUTPUT"
           echo "tag=alpine-v${alpine_version}-${GITHUB_SHA::8}-${WSL_WINDOWS_VERSION}" >> "$GITHUB_OUTPUT"
 
-      - name: upload artifact
-        uses: actions/upload-artifact@v4
+  release:
+    name: Publish GitHub release
+    needs: inspect
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    env:
+      WSL_WINDOWS_VERSION: ${{ inputs.windows_version || 'windows10' }}
+      RELEASE_TAG: ${{ needs.inspect.outputs.tag }}
+
+    steps:
+      - name: download root filesystem
+        uses: actions/download-artifact@v4
         with:
           name: alpine-wsl
-          path: alpine-wsl.tar.gz
 
       - name: check for an existing release
         id: release_check
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view "${{ steps.metadata.outputs.tag }}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
             echo "Release already exists for this Alpine version and source commit."
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: create github release
-        if: github.ref == 'refs/heads/main' && steps.release_check.outputs.exists != 'true'
+      - name: create GitHub release
+        if: steps.release_check.outputs.exists != 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.metadata.outputs.tag }}
-          name: Alpine WSL ${{ steps.metadata.outputs.tag }}
+          tag_name: ${{ needs.inspect.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: Alpine WSL ${{ needs.inspect.outputs.tag }}
           body: |
-            Alpine version: ${{ steps.metadata.outputs.alpine_version }}
+            Alpine version: ${{ needs.inspect.outputs.alpine_version }}
             Source commit: ${{ github.sha }}
             Windows target: ${{ env.WSL_WINDOWS_VERSION }}
           files: alpine-wsl.tar.gz
