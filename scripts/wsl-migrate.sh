@@ -318,7 +318,6 @@ if [ -z "$RESUME_ARCHIVE" ]; then
   SOURCE_DATA_KB=$(printf '%s\n' "$SIZE_OUTPUT" | awk 'NR>1 && $1 ~ /^[0-9]+$/ {print $1}')
 fi
 case "$SOURCE_USED_KB:$SOURCE_DATA_KB" in *[!0-9:]*|:*) fail "could not calculate source sizes";; esac
-if [ -z "$RESUME_ARCHIVE" ]; then printf '%s\n%s\n' "$SOURCE_USED_KB" "$SOURCE_DATA_KB" > "$SIZE_FILE"; fi
 TARGET_DU_KB=0
 for rel in etc home root opt srv usr/local var/www var/lib; do
   if [ -e "/$rel" ]; then size=$(du -skx "/$rel" | awk 'NR==1 {print $1}'); TARGET_DU_KB=$((TARGET_DU_KB + size)); fi
@@ -450,7 +449,7 @@ if [ -s "$WORLD_FILE" ]; then
   apk update > "$STATE_DIR/apk-update.log" 2>&1 || { warn "Could not refresh APK indexes."; PACKAGE_WARNING=1; }
   : > "$STATE_DIR/apk-world-safe"
   while IFS= read -r package; do
-    case "$package" in ''|\#*) continue ;; *[!A-Za-z0-9+._:<>~=,-]*) warn "Skipped unsupported APK entry: $package"; PACKAGE_WARNING=1 ;; *) printf '%s\n' "$package" >> "$STATE_DIR/apk-world-safe" ;; esac
+    case "$package" in ''|\#*) continue ;; *[!A-Za-z0-9+._:@<>~=,-]*) warn "Skipped unsupported APK entry: $package"; PACKAGE_WARNING=1 ;; *) printf '%s\n' "$package" >> "$STATE_DIR/apk-world-safe" ;; esac
   done < "$WORLD_FILE"
   set --
   while IFS= read -r package; do [ -n "$package" ] && set -- "$@" "$package"; done < "$STATE_DIR/apk-world-safe"
@@ -483,9 +482,14 @@ if [ -s "$WORLD_FILE" ]; then
     fi
   fi
 fi
-
 echo "Restoring compatible user accounts and groups..."
 restore_source_accounts
+if [ -s "$WARNINGS" ]; then
+  echo "Some users, groups, or packages need manual review; details are listed above and in $WARNINGS."
+  printf 'Type CONTINUE to proceed with data migration: '
+  IFS= read -r answer || answer=
+  [ "$answer" = CONTINUE ] || fail "account and package warnings need review"
+fi
 mkdir -p /var/lib/wsl-migrate "$STATE_DIR"
 find "$SOURCE_ETC" \( -type f -o -type l \) -print | LC_ALL=C sort > "$STATE_DIR/etc-files.list"
 : > "$STATE_DIR/etc-auto.list"
@@ -513,7 +517,13 @@ while IFS= read -r relative; do [ -n "$relative" ] && copy_config_file "$SOURCE_
 if [ "$CONFIG_CHOICE" = use-old ]; then
   while IFS= read -r relative; do [ -n "$relative" ] && copy_config_file "$SOURCE_ETC/$relative"; done < "$STATE_DIR/etc-conflicts.list"
 fi
-if [ -s "$STATE_DIR/etc-protected.list" ]; then warn "Old system files were kept in the archive, not activated; see $STATE_DIR/etc-protected.list."; fi
+if [ -s "$STATE_DIR/etc-protected.list" ]; then
+  warn "Old system files were kept in the archive, not activated; see $STATE_DIR/etc-protected.list."
+  sed -n '1,60p' "$STATE_DIR/etc-protected.list"
+  printf 'Type CONTINUE to keep the new Release system files and continue: '
+  IFS= read -r answer || answer=
+  [ "$answer" = CONTINUE ] || fail "system configuration differences need review"
+fi
 
 echo "Restoring users and application data..."
 for rel in home root opt srv var/www; do
