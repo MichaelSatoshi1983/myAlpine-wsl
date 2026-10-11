@@ -3,11 +3,13 @@ set -eu
 usage() {
   cat <<'EOF'
 Usage: wsl-migrate [--dry-run] [--backup-dir WINDOWS_MOUNTED_PATH] [--install-location WINDOWS_MOUNTED_PATH] SOURCE_DISTRO [NEW_DISTRO_NAME]
+       wsl-migrate --resume BACKUP_TAR SOURCE_DISTRO [NEW_DISTRO_NAME]
        wsl-migrate --rollback PREVIOUS_DISTRO
 
 Create a full WSL export of SOURCE_DISTRO, then import it as a second distro.
-The source remains registered and unchanged. The clone keeps the source OS
-version and configuration; this does not upgrade it to the current image.
+The source remains registered. The clone keeps the source OS version and
+configuration; this does not upgrade it to the current image. Use --resume to
+continue from an existing export after an interrupted import.
 EOF
 }
 fail() { echo "wsl-migrate: $*" >&2; exit 1; }
@@ -88,12 +90,16 @@ migration_exit() {
   else
     echo "Migration stopped before completion. No distro or backup was automatically deleted." >&2
   fi
-  if [ "$SOURCE_STOPPED" -eq 1 ]; then
+  if [ "$SOURCE_PREPARED" -eq 1 ] && [ "$SOURCE_STOPPED" -eq 0 ]; then
+    echo "The source remains registered. It may be running with Docker stopped; start it from PowerShell with: wsl --distribution $SOURCE_DISTRO" >&2
+  fi
+  if [ "$SOURCE_STOP_ATTEMPTED" -eq 1 ] && [ "$SOURCE_STOPPED" -eq 1 ]; then
     echo "The source remains registered. Start it from PowerShell with: wsl --distribution $SOURCE_DISTRO" >&2
   fi
   if [ -n "$BACKUP_FILE" ] && [ -f "$BACKUP_FILE" ]; then
     if [ "$EXPORT_VALID" -eq 1 ]; then
       echo "Validated export or recovery copy: $BACKUP_FILE" >&2
+      echo "Continue from this export with: wsl-migrate --resume \"$BACKUP_FILE\" $SOURCE_DISTRO $NEW_DISTRO" >&2
     else
       echo "A partial or unvalidated export may exist at: $BACKUP_FILE" >&2
     fi
@@ -180,7 +186,8 @@ fi
 load_distro_list || fail "could not read 'wsl --list --verbose'; no distro was stopped"
 distro_is_registered "$SOURCE_DISTRO" || fail "source distro is not registered in WSL: $SOURCE_DISTRO"
 if distro_is_registered "$NEW_DISTRO"; then
-  fail "new distro name is already registered in WSL: $NEW_DISTRO"
+  if [ "$RESUME" -eq 1 ]; then CLONE_IMPORTED=1
+  else fail "new distro name is already registered in WSL: $NEW_DISTRO"; fi
 fi
 SOURCE_WSL_VERSION=$(distro_wsl_version "$SOURCE_DISTRO")
 case "$SOURCE_WSL_VERSION" in 1|2) ;; *) fail "could not detect the source WSL version; no distro was stopped";; esac
@@ -198,7 +205,9 @@ if [ -z "$INSTALL_LOCATION" ]; then
 fi
 case "$BACKUP_DIR" in /mnt/[A-Za-z]/*) ;; *) fail "backup directory must be on a mounted Windows drive, such as /mnt/c/Users/...";; esac
 case "$INSTALL_LOCATION" in /mnt/[A-Za-z]/*) ;; *) fail "install location must be on a mounted Windows drive, such as /mnt/c/Users/...";; esac
-[ ! -e "$INSTALL_LOCATION" ] || fail "install location already exists; choose an empty, unused path: $INSTALL_LOCATION"
+if [ "$RESUME" -eq 0 ]; then
+  [ ! -e "$INSTALL_LOCATION" ] || fail "install location already exists; choose an empty, unused path: $INSTALL_LOCATION"
+fi
 INSTALL_PARENT=$(dirname -- "$INSTALL_LOCATION")
 [ -d "$INSTALL_PARENT" ] || fail "parent of install location does not exist: $INSTALL_PARENT"
 [ -w "$INSTALL_PARENT" ] || fail "install location parent is not writable: $INSTALL_PARENT"
@@ -264,11 +273,11 @@ Will not be copied:
   - Running process state. The source distro is stopped before export.
 
 Actions after confirmation:
-  1. Stop "$SOURCE_DISTRO".
-  2. Export it to the retained tar backup shown above and validate the archive.
-  3. Import that archive as "$NEW_DISTRO" using WSL $TARGET_WSL_VERSION.
-  4. Install wsl-migrate as /usr/local/bin/wsl-migrate inside the clone.
-  5. Ask whether to set the clone as the default distro.
+  1. Stop database and application workloads, then gracefully power off the source.
+  2. Export and validate a retained tar backup, or reuse an existing one with --resume.
+  3. Check backup and install drive space before importing as "$NEW_DISTRO".
+  4. Verify key configuration and compare /home and Docker file contents.
+  5. Install wsl-migrate in the clone and ask whether to set it as default.
 
 Important risks and limitations:
   - This preserves the old distro; it does not upgrade it to the current
@@ -281,8 +290,12 @@ Important risks and limitations:
   - Running both copies can start duplicate services or Docker workloads,
     compete for ports, and operate on duplicated container data. Prefer
     testing one copy at a time.
-  - The export can be large; ensure the Windows drive has enough free space.
+  - The export can be large; both backup and install drives need enough space.
     The old distro stays registered and the export remains available for recovery.
+  - Stop application and database workloads first. Docker is stopped when
+    possible, then the source is synced and gracefully powered off.
+  - After import, the script compares important configs and hashes files in
+    /home and /var/lib/docker against the source manifest.
 
 No changes have been made yet. Enter y to review the stop confirmation;
 anything else cancels.
