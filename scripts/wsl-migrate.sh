@@ -15,6 +15,7 @@ fail() { echo "wsl-migrate: $*" >&2; exit 1; }
 DISTRO_LIST=
 SOURCE_STOPPED=0
 EXPORT_VALID=0
+REFRESH_SSH_KEYS=0
 CLONE_IMPORTED=0
 UTILITY_INSTALLED=0
 MIGRATION_COMPLETE=0
@@ -68,7 +69,11 @@ migration_exit() {
     echo "The source remains registered. Start it from PowerShell with: wsl --distribution $SOURCE_DISTRO" >&2
   fi
   if [ -n "$BACKUP_FILE" ] && [ -f "$BACKUP_FILE" ]; then
-    echo "Available export or recovery copy: $BACKUP_FILE" >&2
+    if [ "$EXPORT_VALID" -eq 1 ]; then
+      echo "Validated export or recovery copy: $BACKUP_FILE" >&2
+    else
+      echo "A partial or unvalidated export may exist at: $BACKUP_FILE" >&2
+    fi
   fi
   if [ "$CLONE_IMPORTED" -eq 1 ]; then
     echo "The clone remains registered: $NEW_DISTRO" >&2
@@ -154,6 +159,7 @@ fi
 SOURCE_WSL_VERSION=$(distro_wsl_version "$SOURCE_DISTRO")
 case "$SOURCE_WSL_VERSION" in 1|2) ;; *) fail "could not detect the source WSL version; no distro was stopped";; esac
 TARGET_WSL_VERSION=$SOURCE_WSL_VERSION
+command -v sha256sum >/dev/null 2>&1 || fail "sha256sum is required to record the export checksum"
 
 safe_name=$(printf '%s' "$NEW_DISTRO" | tr -c 'A-Za-z0-9_.-' '_')
 if [ -z "$BACKUP_DIR" ]; then
@@ -258,7 +264,6 @@ case "$answer" in YES) ;; *) echo "Cancelled. The source was not terminated."; e
 BACKUP_DIR=$(mkdir -p "$BACKUP_DIR" && CDPATH='' cd -- "$BACKUP_DIR" && pwd)
 BACKUP_FILE=$BACKUP_DIR/$safe_name-$timestamp.tar
 WINDOWS_BACKUP=$(wslpath -w "$BACKUP_FILE")
-MIGRATION_STARTED=1
 SOURCE_STOPPED=1
 "$WSL_EXE" --terminate "$SOURCE_DISTRO"
 
@@ -304,6 +309,7 @@ if [ "$REFRESH_SSH_KEYS" -eq 1 ]; then
 fi
 
 EXPORT_SHA256=$(sha256sum "$BACKUP_FILE" | awk '{print $1}')
+[ -n "$EXPORT_SHA256" ] || fail "could not calculate the export checksum"
 REPORT_FILE=$BACKUP_FILE.migration.txt
 {
   printf 'Source distro: %s\n' "$SOURCE_DISTRO"
