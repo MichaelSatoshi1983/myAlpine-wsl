@@ -79,6 +79,8 @@ cp "$SCRIPT_DIR/wsl-start-docker.sh" "$ROOTFS/usr/local/sbin/wsl-start-docker"
 mkdir -p "$ROOTFS/usr/local/bin"
 cp "$SCRIPT_DIR/wsl-migrate.sh" "$ROOTFS/usr/local/bin/wsl-migrate"
 cp "$SCRIPT_DIR/wsl-update.sh" "$ROOTFS/usr/local/bin/wsl-update"
+mkdir -p "$ROOTFS/usr/local/lib"
+cp "$SCRIPT_DIR/wsl-update.ps1" "$ROOTFS/usr/local/lib/wsl-update.ps1"
 chmod 0755 "$ROOTFS/usr/local/sbin/wsl-start-docker" "$ROOTFS/usr/local/bin/wsl-migrate" "$ROOTFS/usr/local/bin/wsl-update"
 chmod +x "$ROOTFS/setup.sh"
 

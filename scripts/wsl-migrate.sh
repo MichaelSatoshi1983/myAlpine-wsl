@@ -63,10 +63,10 @@ make_target_manifest() {
     root="/$rel"
     if [ ! -e "$root" ]; then printf 'MISSING %s\n' "$root"; continue; fi
     printf 'ROOT %s\n' "$root"
-    find "$root" \( -path /var/lib/apk -o -path /var/lib/openrc -o -path /var/lib/dbus -o -path /var/lib/misc -o -path /var/lib/wsl-migrate -o -path /usr/local/bin/wsl-migrate -o -path /usr/local/sbin/wsl-start-docker -o -path /usr/local/lib/libjbr-musl-shim.so \) -prune -o -type f -exec sha256sum "{}" \;
-    find "$root" \( -path /var/lib/apk -o -path /var/lib/openrc -o -path /var/lib/dbus -o -path /var/lib/misc -o -path /var/lib/wsl-migrate -o -path /usr/local/bin/wsl-migrate -o -path /usr/local/sbin/wsl-start-docker -o -path /usr/local/lib/libjbr-musl-shim.so \) -prune -o -type f -exec stat -c 'FILEMETA %a %u %g %n' "{}" \;
-    find "$root" \( -path /var/lib/apk -o -path /var/lib/openrc -o -path /var/lib/dbus -o -path /var/lib/misc -o -path /var/lib/wsl-migrate -o -path /usr/local/bin/wsl-migrate -o -path /usr/local/sbin/wsl-start-docker -o -path /usr/local/lib/libjbr-musl-shim.so \) -prune -o -type d -exec stat -c 'DIRMETA %a %u %g %n' "{}" \;
-    find "$root" \( -path /var/lib/apk -o -path /var/lib/openrc -o -path /var/lib/dbus -o -path /var/lib/misc -o -path /var/lib/wsl-migrate -o -path /usr/local/bin/wsl-migrate -o -path /usr/local/sbin/wsl-start-docker -o -path /usr/local/lib/libjbr-musl-shim.so \) -prune -o -type l -exec sh -c 'for path do printf "LINK %s -> %s\n" "$path" "$(readlink "$path")"; done' sh "{}" \;
+    find "$root" \( -path /var/lib/apk -o -path /var/lib/openrc -o -path /var/lib/dbus -o -path /var/lib/misc -o -path /var/lib/wsl-migrate -o -path /usr/local/bin/wsl-migrate -o -path /usr/local/bin/wsl-update -o -path /usr/local/sbin/wsl-start-docker -o -path /usr/local/lib/wsl-update.ps1 -o -path /usr/local/lib/libjbr-musl-shim.so \) -prune -o -type f -exec sha256sum "{}" \;
+    find "$root" \( -path /var/lib/apk -o -path /var/lib/openrc -o -path /var/lib/dbus -o -path /var/lib/misc -o -path /var/lib/wsl-migrate -o -path /usr/local/bin/wsl-migrate -o -path /usr/local/bin/wsl-update -o -path /usr/local/sbin/wsl-start-docker -o -path /usr/local/lib/wsl-update.ps1 -o -path /usr/local/lib/libjbr-musl-shim.so \) -prune -o -type f -exec stat -c 'FILEMETA %a %u %g %n' "{}" \;
+    find "$root" \( -path /var/lib/apk -o -path /var/lib/openrc -o -path /var/lib/dbus -o -path /var/lib/misc -o -path /var/lib/wsl-migrate -o -path /usr/local/bin/wsl-migrate -o -path /usr/local/bin/wsl-update -o -path /usr/local/sbin/wsl-start-docker -o -path /usr/local/lib/wsl-update.ps1 -o -path /usr/local/lib/libjbr-musl-shim.so \) -prune -o -type d -exec stat -c 'DIRMETA %a %u %g %n' "{}" \;
+    find "$root" \( -path /var/lib/apk -o -path /var/lib/openrc -o -path /var/lib/dbus -o -path /var/lib/misc -o -path /var/lib/wsl-migrate -o -path /usr/local/bin/wsl-migrate -o -path /usr/local/bin/wsl-update -o -path /usr/local/sbin/wsl-start-docker -o -path /usr/local/lib/wsl-update.ps1 -o -path /usr/local/lib/libjbr-musl-shim.so \) -prune -o -type l -exec sh -c 'for path do printf "LINK %s -> %s\n" "$path" "$(readlink "$path")"; done' sh "{}" \;
   done
 }
 manifest_inside_source() {
@@ -77,16 +77,16 @@ manifest_inside_source() {
       root="/$rel"
       if [ ! -e "$root" ]; then printf "MISSING %s\n" "$root"; continue; fi
       printf "ROOT %s\n" "$root"
-      find "$root" \( -path /var/lib/apk -o -path /var/lib/openrc -o -path /var/lib/dbus -o -path /var/lib/misc -o -path /var/lib/wsl-migrate -o -path /usr/local/bin/wsl-migrate -o -path /usr/local/sbin/wsl-start-docker -o -path /usr/local/lib/libjbr-musl-shim.so \) -prune -o -type f -exec sha256sum "{}" \;
-      find "$root" \( -path /var/lib/apk -o -path /var/lib/openrc -o -path /var/lib/dbus -o -path /var/lib/misc -o -path /var/lib/wsl-migrate -o -path /usr/local/bin/wsl-migrate -o -path /usr/local/sbin/wsl-start-docker -o -path /usr/local/lib/libjbr-musl-shim.so \) -prune -o -type f -exec stat -c "FILEMETA %a %u %g %n" "{}" \;
-      find "$root" \( -path /var/lib/apk -o -path /var/lib/openrc -o -path /var/lib/dbus -o -path /var/lib/misc -o -path /var/lib/wsl-migrate -o -path /usr/local/bin/wsl-migrate -o -path /usr/local/sbin/wsl-start-docker -o -path /usr/local/lib/libjbr-musl-shim.so \) -prune -o -type d -exec stat -c "DIRMETA %a %u %g %n" "{}" \;
-      find "$root" \( -path /var/lib/apk -o -path /var/lib/openrc -o -path /var/lib/dbus -o -path /var/lib/misc -o -path /var/lib/wsl-migrate -o -path /usr/local/bin/wsl-migrate -o -path /usr/local/sbin/wsl-start-docker -o -path /usr/local/lib/libjbr-musl-shim.so \) -prune -o -type l -exec sh -c '\''for path do printf "LINK %s -> %s\n" "$path" "$(readlink "$path")"; done'\'' sh "{}" \;
+      find "$root" \( -path /var/lib/apk -o -path /var/lib/openrc -o -path /var/lib/dbus -o -path /var/lib/misc -o -path /var/lib/wsl-migrate -o -path /usr/local/bin/wsl-migrate -o -path /usr/local/bin/wsl-update -o -path /usr/local/sbin/wsl-start-docker -o -path /usr/local/lib/wsl-update.ps1 -o -path /usr/local/lib/libjbr-musl-shim.so \) -prune -o -type f -exec sha256sum "{}" \;
+      find "$root" \( -path /var/lib/apk -o -path /var/lib/openrc -o -path /var/lib/dbus -o -path /var/lib/misc -o -path /var/lib/wsl-migrate -o -path /usr/local/bin/wsl-migrate -o -path /usr/local/bin/wsl-update -o -path /usr/local/sbin/wsl-start-docker -o -path /usr/local/lib/wsl-update.ps1 -o -path /usr/local/lib/libjbr-musl-shim.so \) -prune -o -type f -exec stat -c "FILEMETA %a %u %g %n" "{}" \;
+      find "$root" \( -path /var/lib/apk -o -path /var/lib/openrc -o -path /var/lib/dbus -o -path /var/lib/misc -o -path /var/lib/wsl-migrate -o -path /usr/local/bin/wsl-migrate -o -path /usr/local/bin/wsl-update -o -path /usr/local/sbin/wsl-start-docker -o -path /usr/local/lib/wsl-update.ps1 -o -path /usr/local/lib/libjbr-musl-shim.so \) -prune -o -type d -exec stat -c "DIRMETA %a %u %g %n" "{}" \;
+      find "$root" \( -path /var/lib/apk -o -path /var/lib/openrc -o -path /var/lib/dbus -o -path /var/lib/misc -o -path /var/lib/wsl-migrate -o -path /usr/local/bin/wsl-migrate -o -path /usr/local/bin/wsl-update -o -path /usr/local/sbin/wsl-start-docker -o -path /usr/local/lib/wsl-update.ps1 -o -path /usr/local/lib/libjbr-musl-shim.so \) -prune -o -type l -exec sh -c '\''for path do printf "LINK %s -> %s\n" "$path" "$(readlink "$path")"; done'\'' sh "{}" \;
     done
   ' sh $MIGRATION_PATHS 2>/dev/null
 }
 protected_config() {
   case "$1" in
-    passwd|group|shadow|gshadow|wsl.conf|hostname|hosts|resolv.conf|fstab|machine-id|os-release|alpine-release|inittab|rc.conf|modules|apk/*|init.d/*|runlevels/*|ssh/ssh_host_*|wsl-migrate/*) return 0 ;;
+    passwd|group|shadow|gshadow|wsl.conf|alpine-wsl-build|hostname|hosts|resolv.conf|fstab|machine-id|os-release|alpine-release|inittab|rc.conf|modules|apk/*|init.d/*|runlevels/*|ssh/ssh_host_*|wsl-migrate/*) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -355,7 +355,7 @@ Full old distro export: $BACKUP_FILE
 New target snapshot: $TARGET_BACKUP_FILE
 Old /etc/apk/world package list will be resolved against the new Alpine repositories.
 Non-system /etc config files migrate; conflicts will be presented for your choice.
-Protected new-system files include users, APK state, WSL boot/network config and identity.
+Protected new-system files include users, build metadata, APK state, WSL boot/network config and identity.
 EOF
   exit 0
 fi
@@ -448,8 +448,14 @@ ARCHIVE_LIST_FILE=$STATE_DIR/archive.list
 tar -tf "$BACKUP_FILE" > "$ARCHIVE_LIST_FILE" || fail "could not list the source export"
 
 mkdir -p "$STATE_DIR/source-etc"
-  tar -xpf "$BACKUP_FILE" -C "$STATE_DIR/source-etc" --numeric-owner --same-owner --same-permissions --wildcards --wildcards-match-slash -- \
-  "$ARCHIVE_PREFIX"etc "$ARCHIVE_PREFIX"'etc/**' "$ARCHIVE_PREFIX"'etc/*' 2>/dev/null || fail "could not extract old /etc for migration"
+ETC_PATHS=$STATE_DIR/etc-paths.list
+awk -v prefix="$ARCHIVE_PREFIX" 'index($0, prefix "etc/")==1 || $0==prefix "etc" {print}' "$ARCHIVE_LIST_FILE" > "$ETC_PATHS"
+[ -s "$ETC_PATHS" ] || fail "old /etc was not found in the source export"
+if ! tar -xpf "$BACKUP_FILE" -C "$STATE_DIR/source-etc" --numeric-owner --same-owner --same-permissions --no-recursion \
+  --files-from="$ETC_PATHS" 2>"$STATE_DIR/etc-extract.log"; then
+  cat "$STATE_DIR/etc-extract.log" >&2
+  fail "could not extract old /etc for migration; see $STATE_DIR/etc-extract.log"
+fi
 SOURCE_ETC=$STATE_DIR/source-etc
 [ -d "$SOURCE_ETC/etc" ] && SOURCE_ETC=$SOURCE_ETC/etc
 [ -d "$SOURCE_ETC" ] || fail "old /etc snapshot was not found"
@@ -560,13 +566,13 @@ if archive_has var/lib; then
     rm -rf -- "$target"
   done
 fi
-DATA_PATTERNS=$STATE_DIR/data-patterns.list
-: > "$DATA_PATTERNS"
+DATA_ROOTS=$STATE_DIR/data-roots.list
+: > "$DATA_ROOTS"
 for rel in home root opt srv usr/local var/www var/lib; do
-  if archive_contains "$rel"; then printf '%s\n%s\n' "$ARCHIVE_PREFIX$rel" "$ARCHIVE_PREFIX$rel"'/**' >> "$DATA_PATTERNS"; fi
+  if archive_contains "$rel"; then printf '%s\n' "$ARCHIVE_PREFIX$rel" >> "$DATA_ROOTS"; fi
 done
 for extra in $EXTRA_PATHS; do
-  if archive_contains "$extra"; then printf '%s\n%s\n' "$ARCHIVE_PREFIX$extra" "$ARCHIVE_PREFIX$extra"'/**' >> "$DATA_PATTERNS"
+  if archive_contains "$extra"; then printf '%s\n' "$ARCHIVE_PREFIX$extra" >> "$DATA_ROOTS"
   else warn "The old distro did not contain custom path /$extra; it was skipped."; fi
 done
 for extra in $EXTRA_PATHS; do
@@ -574,12 +580,28 @@ for extra in $EXTRA_PATHS; do
     if [ -d "/$extra" ]; then find "/$extra" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + 2>/dev/null || :; else rm -f -- "/$extra"; fi
   fi
 done
-tar --extract --file="$BACKUP_FILE" --directory=/ --numeric-owner --same-owner --same-permissions --overwrite --wildcards --wildcards-match-slash \
-  --exclude="$ARCHIVE_PREFIX"var/lib/apk --exclude="$ARCHIVE_PREFIX"'var/lib/apk/*' --exclude="$ARCHIVE_PREFIX"var/lib/openrc --exclude="$ARCHIVE_PREFIX"'var/lib/openrc/*' \
-  --exclude="$ARCHIVE_PREFIX"var/lib/dbus --exclude="$ARCHIVE_PREFIX"'var/lib/dbus/*' --exclude="$ARCHIVE_PREFIX"var/lib/misc --exclude="$ARCHIVE_PREFIX"'var/lib/misc/*' \
-  --exclude="$ARCHIVE_PREFIX"var/lib/wsl-migrate --exclude="$ARCHIVE_PREFIX"'var/lib/wsl-migrate/*' \
-  --exclude="$ARCHIVE_PREFIX"usr/local/bin/wsl-migrate --exclude="$ARCHIVE_PREFIX"usr/local/sbin/wsl-start-docker --exclude="$ARCHIVE_PREFIX"usr/local/lib/libjbr-musl-shim.so \
-  --files-from="$DATA_PATTERNS" 2>/dev/null || fail "could not restore old data from the export"
+DATA_PATHS=$STATE_DIR/data-paths.list
+awk -v prefix="$ARCHIVE_PREFIX" '
+  function under(path, root) { return path==root || index(path, root "/")==1 }
+  FILENAME==ARGV[1] { roots[++root_count]=$0; next }
+  {
+    selected=0
+    for (i=1; i<=root_count; i++) if (under($0, roots[i])) { selected=1; break }
+    if (!selected) next
+    if (under($0, prefix "var/lib/apk") || under($0, prefix "var/lib/openrc") ||
+        under($0, prefix "var/lib/dbus") || under($0, prefix "var/lib/misc") ||
+        under($0, prefix "var/lib/wsl-migrate") || $0==prefix "usr/local/bin/wsl-migrate" ||
+        $0==prefix "usr/local/bin/wsl-update" || $0==prefix "usr/local/sbin/wsl-start-docker" ||
+        $0==prefix "usr/local/lib/wsl-update.ps1" || $0==prefix "usr/local/lib/libjbr-musl-shim.so") next
+    print
+  }
+' "$DATA_ROOTS" "$ARCHIVE_LIST_FILE" > "$DATA_PATHS"
+if [ ! -s "$DATA_PATHS" ]; then fail "no migratable data paths were found in the source export"; fi
+if ! tar --extract --file="$BACKUP_FILE" --directory=/ --numeric-owner --same-owner --same-permissions --overwrite --no-recursion \
+  --files-from="$DATA_PATHS" 2>"$STATE_DIR/data-extract.log"; then
+  cat "$STATE_DIR/data-extract.log" >&2
+  fail "could not restore old data from the export; see $STATE_DIR/data-extract.log"
+fi
 
 SOURCE_DEFAULT_USER=$(awk -F= '/^[[:space:]]*default[[:space:]]*=/ {gsub(/[[:space:]]/, "", $2); print $2; exit}' "$SOURCE_ETC/wsl.conf" 2>/dev/null || :)
 SOURCE_DEFAULT_UID=$(awk -F: -v n="$SOURCE_DEFAULT_USER" '$1==n {print $3; exit}' "$SOURCE_ETC/passwd" 2>/dev/null || :)
@@ -648,6 +670,12 @@ REPORT_FILE=$BACKUP_FILE.migration.txt
   printf 'APK package warning: %s\nConfig choice: %s\nData differences accepted: %s\n' "$PACKAGE_WARNING" "$CONFIG_CHOICE" "$CONTENT_DIFFERENCES"
   printf 'Warnings: %s\nOld /etc snapshot: %s\n' "$WARNINGS" "$SOURCE_ETC"
 } > "$REPORT_FILE"
+{
+  printf 'Source distro: %s\n' "$SOURCE_DISTRO"
+  printf 'Target distro: %s\n' "$CURRENT_DISTRO"
+  printf 'Completed at (UTC): %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf 'Migration report: %s\n' "$REPORT_FILE"
+} > /etc/wsl-migrate/last-complete
 MIGRATION_COMPLETE=1
 echo
 echo "Migration completed into new Alpine Release: $CURRENT_DISTRO"
