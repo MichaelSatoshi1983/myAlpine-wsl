@@ -33,10 +33,9 @@ SOURCE_USED_KB=
 CONTENT_DIFFERENCES=0
 
 load_distro_list() {
-  if ! DISTRO_LIST=$("$WSL_EXE" --list --verbose 2>/dev/null); then
+  if ! DISTRO_LIST=$(WSL_UTF8=1 "$WSL_EXE" --list --verbose 2>/dev/null | tr -d '\r\000'); then
     return 1
   fi
-  DISTRO_LIST=$(printf '%s\n' "$DISTRO_LIST" | tr -d '\r')
   [ -n "$DISTRO_LIST" ]
 }
 
@@ -165,11 +164,12 @@ if [ -z "$WSL_EXE" ]; then
   done
 fi
 [ -n "$WSL_EXE" ] || fail "cannot find wsl.exe; set WSL_EXE to its mounted Windows path"
+export WSL_UTF8=1
 WINDOWS_DIR=$(dirname -- "$WSL_EXE")
 CMD_EXE=$WINDOWS_DIR/cmd.exe
 [ -x "$CMD_EXE" ] || fail "cannot find cmd.exe beside wsl.exe"
-WINDOWS_USERPROFILE=$("$CMD_EXE" /d /c echo %USERPROFILE% | tr -d '\r')
-WINDOWS_LOCALAPPDATA=$("$CMD_EXE" /d /c echo %LOCALAPPDATA% | tr -d '\r')
+WINDOWS_USERPROFILE=$(WSL_UTF8=1 "$CMD_EXE" /d /c echo %USERPROFILE% | tr -d '\r\000')
+WINDOWS_LOCALAPPDATA=$(WSL_UTF8=1 "$CMD_EXE" /d /c echo %LOCALAPPDATA% | tr -d '\r\000')
 [ -n "$WINDOWS_USERPROFILE" ] || fail "could not read the Windows user profile"
 [ -n "$WINDOWS_LOCALAPPDATA" ] || fail "could not read Windows LocalAppData"
 
