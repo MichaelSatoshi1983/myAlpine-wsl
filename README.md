@@ -51,6 +51,8 @@ Old non-system `/etc` configuration files are merged. Missing files are copied a
 
 Docker files under `/var/lib/docker` and other application data are copied while both Docker services are stopped. A newer Docker or kernel/storage driver may not be able to use old container state; the script reports this risk and verifies copied content, ownership, permissions, and symlink targets. If verification finds differences, it shows a short diff and requires typing `CONTINUE` to finish. Missing packages, user/group ID conflicts, and unavailable services are listed in the migration warnings and report. Old files outside the included paths remain in the full source export; add them explicitly with `--include`.
 
+Custom executables and libraries under `/usr/local`, `/opt`, and migrated application directories may depend on the old Alpine or musl version; they are preserved, but may need to be rebuilt or reconfigured for the new Release. The new Release's `wsl-migrate`, Docker startup helper, and JetBrains compatibility shim remain in place.
+
 If a run stops after creating the export, resume without exporting again: `sudo -E wsl-migrate --resume /mnt/c/Users/you/Documents/myAlpine-wsl-backups/Alpine-20261011T080000Z.tar Alpine`. The old distro remains registered throughout; no distro or backup is automatically deleted. To restore the previous WSL default, run `wsl-migrate --rollback` inside the new distro. The old distro and complete export remain available for recovery.
 
 
