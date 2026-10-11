@@ -67,8 +67,8 @@ wsl-update
 
 The command checks for the newest published Release matching the image's Windows target and x64 architecture. It downloads the archive, verifies the SHA-256 checksum and embedded build metadata, then offers three choices:
 
-- **Automatic** imports the new image side by side under a Release-tagged WSL name in `%LOCALAPPDATA%\\AlpineWSL\\releases`, then starts the existing interactive `wsl-migrate` flow from the distro where `wsl-update` was run.
-- **Manual** keeps the verified archive under `Documents\\myAlpine-wsl-updates` and prints the PowerShell import and migration commands.
+- **Automatic** imports the new image side by side under a Release-tagged WSL name in `%LOCALAPPDATA%\AlpineWSL\releases`, then starts the existing interactive `wsl-migrate` flow from the distro where `wsl-update` was run.
+- **Manual** keeps the verified archive under `Documents\myAlpine-wsl-updates` and prints the PowerShell import and migration commands.
 - **Skip** leaves the verified download in place without importing it.
 
 The migration still shows its overview and asks before changing data. The old distro remains registered. The updater never unregisters it or deletes its data.
@@ -83,7 +83,7 @@ wsl-update --manual  # download and print the PowerShell steps
 
 Release tags use `Alpine_DDMMYY_win10x64_<12-character-commit>` or `Alpine_DDMMYY_win11x64_<12-character-commit>`. The date is UTC. Each updater only offers Releases matching the Windows target recorded in its image, so a Windows 10 image will not offer a Windows 11 build.
 
-Images published before the updater was added do not contain `wsl-update`. To start using it, manually import the first Release built with this updater as a second distro and run `wsl-migrate` there; subsequent releases can be checked from inside that distro.
+Images published before the updater was added do not contain `wsl-update`. To start using it, manually import the first Release built with this updater as a second distro, then run `sudo -E wsl-migrate <old-distro-name>` there; subsequent releases can be checked from inside the new distro.
 
 ## Build locally
 
