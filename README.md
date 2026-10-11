@@ -32,6 +32,21 @@ The configured user belongs to the `docker` group so it can use Docker without `
 
 Container output logs use the `json-file` driver with rotation: each file is limited to 10 MB and up to three files are retained per container (roughly 30 MB per container). This controls container stdout/stderr logs, not image, volume, or Docker daemon log sizes. Edit `/etc/docker/daemon.json` to change the defaults. After changing the settings on an existing installation, restart Docker and recreate containers to apply the new defaults. Individual containers or Compose services can override them. The build validates the daemon configuration without starting Docker.
 
+## Migrate from an existing WSL distro
+
+The new image includes the `wsl-migrate` command. Run it from the new distro to copy a previous Alpine WSL user's home files and reinstall packages listed in the old distro's `/etc/apk/world`:
+
+```sh
+wsl-migrate --dry-run Alpine
+wsl-migrate Alpine
+```
+
+Replace `Alpine` with the old distro name shown by `wsl.exe --list --quiet`. Close programs in the old distro before migrating. The command asks before exporting and keeps a full WSL export under `%TEMP%\\myAlpine-wsl-backups` by default. The source distro stays registered. Check free disk space first; the export can be large.
+
+The command copies home files into the new default user's home, keeping the new image's `.zshrc`, `.zshenv`, and Oh My Zsh installation. The old Zsh files are saved in the migration report for review. Existing target files replaced by the copy are saved under `~/.wsl-migration-conflicts/`. Packages that cannot be installed are listed in the report.
+
+System configuration under `/etc`, software installed outside the home directory, and Docker images, containers, and volumes are not migrated automatically. Review those separately before switching your daily work to the new distro. Keep the old distro and export until the migration is verified.
+
 ## Build locally
 
 Build on an x86_64 Linux host with root privileges, `wget`, `tar`, and `mountpoint` installed. The build fetches the current Alpine stable minirootfs and writes `alpine-wsl.tar.gz` in the repository root.
