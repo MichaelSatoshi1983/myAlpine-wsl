@@ -1,296 +1,183 @@
 #!/bin/sh
 set -eu
-
 usage() {
   cat <<'EOF'
-Usage: wsl-migrate [--dry-run] [--switch-default] [--source-user NAME] [--target-user NAME] [--backup-dir PATH] SOURCE_DISTRO
-       wsl-migrate --rollback SOURCE_DISTRO
+Usage: wsl-migrate [--dry-run] [--backup-dir WINDOWS_MOUNTED_PATH] [--install-location WINDOWS_MOUNTED_PATH] SOURCE_DISTRO [NEW_DISTRO_NAME]
+       wsl-migrate --rollback PREVIOUS_DISTRO
 
-Export SOURCE_DISTRO to a retained backup, then migrate its home files and
-Alpine package list into the current WSL distribution.
+Create a full WSL export of SOURCE_DISTRO, then import it as a second distro.
+The source remains registered and unchanged. The clone keeps the source OS
+version and configuration; this does not upgrade it to the current image.
 EOF
 }
-
-fail() {
-  echo "wsl-migrate: $*" >&2
-  exit 1
-}
+fail() { echo "wsl-migrate: $*" >&2; exit 1; }
 
 DRY_RUN=0
-SWITCH_DEFAULT=0
 ROLLBACK=0
-SOURCE_USER=
-TARGET_USER=
 BACKUP_DIR=
+INSTALL_LOCATION=
 SOURCE_DISTRO=
-
+NEW_DISTRO=
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --dry-run)
-      DRY_RUN=1
-      shift
-      ;;
-    --switch-default)
-      SWITCH_DEFAULT=1
-      shift
-      ;;
-    --rollback)
-      ROLLBACK=1
-      shift
-      ;;
-    --source-user)
-      [ "$#" -ge 2 ] || fail "--source-user requires a name"
-      SOURCE_USER=$2
-      shift 2
-      ;;
-    --target-user)
-      [ "$#" -ge 2 ] || fail "--target-user requires a name"
-      TARGET_USER=$2
-      shift 2
-      ;;
-    --backup-dir)
-      [ "$#" -ge 2 ] || fail "--backup-dir requires a path"
-      BACKUP_DIR=$2
-      shift 2
-      ;;
-    -h|--help)
-      usage
-      exit 0
-      ;;
-    -*)
-      fail "unknown option: $1"
-      ;;
+    --dry-run) DRY_RUN=1; shift ;;
+    --rollback) ROLLBACK=1; shift ;;
+    --backup-dir) [ "$#" -ge 2 ] || fail "--backup-dir requires a Windows-mounted path"; BACKUP_DIR=$2; shift 2 ;;
+    --install-location) [ "$#" -ge 2 ] || fail "--install-location requires a Windows-mounted path"; INSTALL_LOCATION=$2; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    -*) fail "unknown option: $1" ;;
     *)
-      [ -z "$SOURCE_DISTRO" ] || fail "specify only one source distro"
-      SOURCE_DISTRO=$1
-      shift
-      ;;
+      if [ -z "$SOURCE_DISTRO" ]; then SOURCE_DISTRO=$1
+      elif [ -z "$NEW_DISTRO" ]; then NEW_DISTRO=$1
+      else fail "specify only a source distro and an optional new distro name"; fi
+      shift ;;
   esac
 done
 
-[ -n "$SOURCE_DISTRO" ] || {
-  usage >&2
-  exit 2
-}
+[ -n "$SOURCE_DISTRO" ] || { usage >&2; exit 2; }
+case "$SOURCE_DISTRO" in *[!A-Za-z0-9_.-]*|'') fail "distro names may contain only letters, digits, dot, underscore, and hyphen" ;; esac
+if [ -n "$NEW_DISTRO" ]; then
+  case "$NEW_DISTRO" in *[!A-Za-z0-9_.-]*|'') fail "distro names may contain only letters, digits, dot, underscore, and hyphen" ;; esac
+fi
 
-case "$SOURCE_DISTRO" in
-  *[!A-Za-z0-9_.-]*|'') fail "source distro name may contain only letters, digits, dot, underscore, and hyphen" ;;
-esac
-
-CURRENT_DISTRO=${WSL_DISTRO_NAME:-}
+CURRENT_DISTRO=\${WSL_DISTRO_NAME-}
 [ -n "$CURRENT_DISTRO" ] || fail "run this command inside the new WSL distro"
 [ "$SOURCE_DISTRO" != "$CURRENT_DISTRO" ] || fail "source and current distro are the same"
 
-if [ -z "${WSL_EXE:-}" ]; then
+WSL_EXE=\${WSL_EXE-}
+if [ -z "$WSL_EXE" ]; then
   for candidate in /mnt/c/Windows/System32/wsl.exe /mnt/c/WINDOWS/System32/wsl.exe; do
-    if [ -x "$candidate" ]; then
-      WSL_EXE=$candidate
-      break
-    fi
+    if [ -x "$candidate" ]; then WSL_EXE=$candidate; break; fi
   done
 fi
-[ -n "${WSL_EXE:-}" ] || fail "cannot find wsl.exe; set WSL_EXE to its mounted Windows path"
+[ -n "$WSL_EXE" ] || fail "cannot find wsl.exe; set WSL_EXE to its mounted Windows path"
+WINDOWS_DIR=$(dirname -- "$WSL_EXE")
+CMD_EXE=$WINDOWS_DIR/cmd.exe
+[ -x "$CMD_EXE" ] || fail "cannot find cmd.exe beside wsl.exe"
+WINDOWS_USERPROFILE=$("$CMD_EXE" /d /c echo %USERPROFILE% | tr -d '\r')
+WINDOWS_LOCALAPPDATA=$("$CMD_EXE" /d /c echo %LOCALAPPDATA% | tr -d '\r')
+[ -n "$WINDOWS_USERPROFILE" ] || fail "could not read the Windows user profile"
+[ -n "$WINDOWS_LOCALAPPDATA" ] || fail "could not read Windows LocalAppData"
 
 if [ "$ROLLBACK" -eq 1 ]; then
+  [ -z "$NEW_DISTRO" ] || fail "--rollback accepts one distro name"
   [ "$DRY_RUN" -eq 0 ] || fail "--dry-run cannot be combined with --rollback"
-  [ "$SWITCH_DEFAULT" -eq 0 ] || fail "--switch-default cannot be combined with --rollback"
+  [ -z "$BACKUP_DIR" ] && [ -z "$INSTALL_LOCATION" ] || fail "path options cannot be combined with --rollback"
   "$WSL_EXE" --set-default "$SOURCE_DISTRO"
   echo "Default WSL distro set to $SOURCE_DISTRO. No distro data was changed."
   exit 0
 fi
 
-WINDOWS_DIR=$(dirname -- "$WSL_EXE")
-CMD_EXE=$WINDOWS_DIR/cmd.exe
-[ -x "$CMD_EXE" ] || fail "cannot find cmd.exe beside wsl.exe"
+if [ -z "$NEW_DISTRO" ]; then
+  proposed_name=$SOURCE_DISTRO-migrated
+  printf 'New distro name [%s]: ' "$proposed_name"
+  IFS= read -r NEW_DISTRO || NEW_DISTRO=
+  [ -n "$NEW_DISTRO" ] || NEW_DISTRO=$proposed_name
+  case "$NEW_DISTRO" in *[!A-Za-z0-9_.-]*|'') fail "distro names may contain only letters, digits, dot, underscore, and hyphen" ;; esac
+fi
+[ "$NEW_DISTRO" != "$SOURCE_DISTRO" ] || fail "new distro name must differ from the source"
+[ "$NEW_DISTRO" != "$CURRENT_DISTRO" ] || fail "new distro name is already the current distro"
 
-WINDOWS_USERPROFILE=$( "$CMD_EXE" /d /c echo %USERPROFILE% | tr -d '\r' )
-[ -n "$WINDOWS_USERPROFILE" ] || fail "could not read the Windows user profile"
-
+safe_name=$(printf '%s' "$NEW_DISTRO" | tr -c 'A-Za-z0-9_.-' '_')
 if [ -z "$BACKUP_DIR" ]; then
   BACKUP_DIR=$(wslpath -u "$WINDOWS_USERPROFILE")/Documents/myAlpine-wsl-backups
 fi
-if [ -z "$TARGET_USER" ]; then
-  TARGET_USER=$(awk '
-    /^\[user\][[:space:]]*$/ { in_user=1; next }
-    /^\[/ { in_user=0 }
-    in_user && /^[[:space:]]*default[[:space:]]*=/ {
-      sub(/^[[:space:]]*default[[:space:]]*=[[:space:]]*/, "")
-      sub(/[[:space:]]*$/, "")
-      print
-      exit
-    }
-  ' /etc/wsl.conf)
+if [ -z "$INSTALL_LOCATION" ]; then
+  INSTALL_LOCATION=$(wslpath -u "$WINDOWS_LOCALAPPDATA")/AlpineWSL-$safe_name
 fi
-[ -n "$TARGET_USER" ] || fail "could not find the current distro default user; pass --target-user"
-id "$TARGET_USER" >/dev/null 2>&1 || fail "target user does not exist: $TARGET_USER"
-
-case "$TARGET_USER" in
-  *[!a-z0-9_-]*|'') fail "target user name contains unsupported characters" ;;
-esac
-[ "$(id -un)" = "$TARGET_USER" ] || fail "run as the target user: $TARGET_USER"
-TARGET_HOME=$(awk -F: -v user="$TARGET_USER" '$1 == user { print $6; exit }' /etc/passwd)
-if [ -z "$TARGET_HOME" ] || [ ! -d "$TARGET_HOME" ]; then
-  fail "target home directory was not found"
-fi
+case "$BACKUP_DIR" in /mnt/[A-Za-z]/*) ;; *) fail "backup directory must be on a mounted Windows drive, such as /mnt/c/Users/...";; esac
+case "$INSTALL_LOCATION" in /mnt/[A-Za-z]/*) ;; *) fail "install location must be on a mounted Windows drive, such as /mnt/c/Users/...";; esac
+BACKUP_DIR=$(mkdir -p "$BACKUP_DIR" && CDPATH='' cd -- "$BACKUP_DIR" && pwd)
+[ ! -e "$INSTALL_LOCATION" ] || fail "install location already exists; choose an empty, unused path: $INSTALL_LOCATION"
+WINDOWS_BACKUP_DIR=$(wslpath -w "$BACKUP_DIR")
+WINDOWS_INSTALL_LOCATION=$(wslpath -w "$INSTALL_LOCATION")
+timestamp=$(date -u +%Y%m%dT%H%M%SZ)
+BACKUP_FILE=$BACKUP_DIR/$safe_name-$timestamp.tar
+WINDOWS_BACKUP=$WINDOWS_BACKUP_DIR\$safe_name-$timestamp.tar
+[ ! -e "$BACKUP_FILE" ] || fail "backup file already exists: $BACKUP_FILE"
 
 if [ "$DRY_RUN" -eq 1 ]; then
   cat <<EOF
 Source distro: $SOURCE_DISTRO
-Current distro: $CURRENT_DISTRO
-Target user: $TARGET_USER
-Backup directory: $BACKUP_DIR
-Switch default after migration: $SWITCH_DEFAULT
+Current distro (script host): $CURRENT_DISTRO
+New cloned distro: $NEW_DISTRO
+Full export: $BACKUP_FILE
+New distro install location: $INSTALL_LOCATION
+Import version: WSL 2
 
-The command will export the source distro, retain the export, copy the source
-user's home files into the target user, and try to install packages from
-/etc/apk/world. It will not unregister either distro.
+This creates a full clone of the old distro. It does not upgrade the cloned
+Alpine/system packages to the current Release image. Neither distro is removed.
 EOF
   exit 0
 fi
 
-printf 'Close applications in "%s" before continuing. The source distro will remain registered.\n' "$SOURCE_DISTRO"
-printf 'A full export will be saved under %s. Continue? [y/N] ' "$BACKUP_DIR"
+cat <<EOF
+
+This operation creates a full clone. Review these differences and risks:
+  - The clone retains the source distro's OS, packages, /etc configuration,
+    user data, and Docker data. It does not become the current Release image.
+  - WSL imports the clone as WSL 2. A WSL 1 source can behave differently.
+  - WSL will not copy Windows-side .wslconfig, Windows Terminal profiles,
+    registration settings, or files stored outside the distro filesystem.
+  - The source /etc/wsl.conf is preserved. Boot commands or default-user
+    settings may need adjustment for the target Windows/WSL version.
+  - Running both copies can start duplicate services and Docker workloads,
+    bind the same ports, and expose the same container data. Run one at a time.
+  - A full export needs free Windows disk space roughly comparable to the
+    source distro. The export is retained as a recovery copy.
+  - The source must be stopped for a consistent export; unsaved process state
+    is lost when it is terminated.
+
+Source: $SOURCE_DISTRO
+New clone: $NEW_DISTRO
+Export: $BACKUP_FILE
+Install location: $INSTALL_LOCATION
+
+Continue to the stop-source confirmation? [y/N] 
+EOF
+IFS= read -r answer || answer=
+case "$answer" in y|Y|yes|YES) ;; *) echo "Cancelled."; exit 0 ;; esac
+printf 'Terminate "%s" now, then export its complete filesystem? This closes its WSL processes. [y/N] ' "$SOURCE_DISTRO"
 IFS= read -r answer || answer=
 case "$answer" in
-  y|Y|yes|YES) ;;
-  *) echo "Cancelled."; exit 0 ;;
+  y|Y|yes|YES) "$WSL_EXE" --terminate "$SOURCE_DISTRO" ;;
+  *) echo "Cancelled. The source was not terminated."; exit 0 ;;
 esac
 
-mkdir -p "$BACKUP_DIR"
-BACKUP_DIR=$(CDPATH='' cd -- "$BACKUP_DIR" && pwd)
-WINDOWS_BACKUP_DIR=$(wslpath -w "$BACKUP_DIR")
-
-timestamp=$(date -u +%Y%m%dT%H%M%SZ)
-safe_source=$(printf '%s' "$SOURCE_DISTRO" | tr -c 'A-Za-z0-9_.-' '_')
-BACKUP_FILE=$BACKUP_DIR/${safe_source}-${timestamp}.tar
-WINDOWS_BACKUP=$WINDOWS_BACKUP_DIR/${safe_source}-${timestamp}.tar
-REPORT_DIR=$TARGET_HOME/.wsl-migration/$timestamp
-STAGING_DIR=$(mktemp -d)
-cleanup() {
-  rm -rf -- "$STAGING_DIR"
-}
-trap cleanup EXIT HUP INT TERM
-
-echo "Exporting $SOURCE_DISTRO to $BACKUP_FILE"
+echo "Exporting full distro to $BACKUP_FILE"
 "$WSL_EXE" --export "$SOURCE_DISTRO" "$WINDOWS_BACKUP"
-[ -s "$BACKUP_FILE" ] || fail "export did not create a backup"
-tar -tf "$BACKUP_FILE" >/dev/null 2>&1 || fail "the exported backup is not a readable tar archive"
+[ -s "$BACKUP_FILE" ] || fail "export did not create a non-empty backup"
+tar -tf "$BACKUP_FILE" >/dev/null 2>&1 || fail "export is not a readable tar archive"
+echo "Importing $NEW_DISTRO as WSL 2"
+"$WSL_EXE" --import "$NEW_DISTRO" "$WINDOWS_INSTALL_LOCATION" "$WINDOWS_BACKUP" --version 2
 
-if tar -tf "$BACKUP_FILE" | grep -Fxq './etc/wsl.conf'; then
-  ARCHIVE_PREFIX=./
-elif tar -tf "$BACKUP_FILE" | grep -Fxq 'etc/wsl.conf'; then
-  ARCHIVE_PREFIX=
-else
-  fail "could not find /etc/wsl.conf in the source export"
-fi
-
-if [ -z "$SOURCE_USER" ]; then
-  SOURCE_USER=$(tar -xOf "$BACKUP_FILE" "${ARCHIVE_PREFIX}etc/wsl.conf" | awk '
-    /^\[user\][[:space:]]*$/ { in_user=1; next }
-    /^\[/ { in_user=0 }
-    in_user && /^[[:space:]]*default[[:space:]]*=/ {
-      sub(/^[[:space:]]*default[[:space:]]*=[[:space:]]*/, "")
-      sub(/[[:space:]]*$/, "")
-      print
-      exit
-    }
-  ' || true)
-fi
-[ -n "$SOURCE_USER" ] || fail "could not detect the source default user; pass --source-user"
-case "$SOURCE_USER" in
-  *[!a-z0-9_-]*|'') fail "source user name contains unsupported characters" ;;
-esac
-
-SOURCE_HOME_PATH=${ARCHIVE_PREFIX}home/$SOURCE_USER
-tar -tf "$BACKUP_FILE" | grep -Fq "$SOURCE_HOME_PATH/" || fail "source home was not found in the export: $SOURCE_USER"
-mkdir -p "$STAGING_DIR/home"
-tar -xpf "$BACKUP_FILE" -C "$STAGING_DIR" "$SOURCE_HOME_PATH"
-
-SOURCE_HOME=$STAGING_DIR/home/$SOURCE_USER
-mkdir -p "$REPORT_DIR"
-: > "$REPORT_DIR/packages-installed.txt"
-: > "$REPORT_DIR/packages-not-installed.txt"
-
-if [ -f "$SOURCE_HOME/.zshrc" ]; then
-  cp -p "$SOURCE_HOME/.zshrc" "$REPORT_DIR/source.zshrc"
-fi
-if [ -f "$SOURCE_HOME/.zshenv" ]; then
-  cp -p "$SOURCE_HOME/.zshenv" "$REPORT_DIR/source.zshenv"
-fi
-mkdir -p "$TARGET_HOME/.wsl-migration-conflicts/$timestamp"
-rsync -a \
-  --backup --backup-dir=".wsl-migration-conflicts/$timestamp" \
-  --exclude='/.zshrc' \
-  --exclude='/.zshenv' \
-  --exclude='/.oh-my-zsh/***' \
-  --exclude='/.wsl-migration/***' \
-  --exclude='/.wsl-migration-conflicts/***' \
-  "$SOURCE_HOME/" "$TARGET_HOME/"
-
-if [ -d "$SOURCE_HOME/.oh-my-zsh/custom" ] && [ -d "$TARGET_HOME/.oh-my-zsh/custom" ]; then
-  rsync -a \
-    --backup --backup-dir=".wsl-migration-conflicts/$timestamp" \
-    "$SOURCE_HOME/.oh-my-zsh/custom/" "$TARGET_HOME/.oh-my-zsh/custom/"
-fi
-
-if tar -tf "$BACKUP_FILE" | grep -Fxq "${ARCHIVE_PREFIX}etc/apk/world"; then
-  tar -xOf "$BACKUP_FILE" "${ARCHIVE_PREFIX}etc/apk/world" > "$STAGING_DIR/apk-world"
-  echo "Refreshing Alpine package indexes"
-  if sudo sh -c 'apk update >> "$1" 2>&1' sh "$REPORT_DIR/apk.log"; then
-    while IFS= read -r package || [ -n "$package" ]; do
-      case "$package" in
-        ''|\#*) continue ;;
-      esac
-      if ! printf '%s\n' "$package" | grep -Eq '^[[:alnum:]_.+@=~^:-]+$'; then
-        printf '%s (unsupported world entry)\n' "$package" >> "$REPORT_DIR/packages-not-installed.txt"
-        continue
-      fi
-      if sudo sh -c 'apk add "$1" >> "$2" 2>&1' sh "$package" "$REPORT_DIR/apk.log"; then
-        printf '%s\n' "$package" >> "$REPORT_DIR/packages-installed.txt"
-      else
-        printf '%s\n' "$package" >> "$REPORT_DIR/packages-not-installed.txt"
-      fi
-    done < "$STAGING_DIR/apk-world"
-  else
-    echo "apk update failed; no packages were installed" >> "$REPORT_DIR/apk.log"
-    cp "$STAGING_DIR/apk-world" "$REPORT_DIR/packages-not-installed.txt"
-  fi
-fi
-
-cat > "$REPORT_DIR/README.txt" <<EOF
-Migration from: $SOURCE_DISTRO
-Source user: $SOURCE_USER
-Target distro: $CURRENT_DISTRO
-Target user: $TARGET_USER
-Full source export: $BACKUP_FILE
-
-Home files were copied. Existing target files replaced during the copy are
-saved in $TARGET_HOME/.wsl-migration-conflicts/$timestamp.
-The release-managed .zshrc, .zshenv, and Oh My Zsh installation were kept.
-The source .zshrc and .zshenv, when present, are saved in this report for review.
-Package results are listed in packages-installed.txt and
-packages-not-installed.txt.
-
-System configuration, custom software outside the home directory, and Docker
-images, containers, and volumes were not copied. The source distro was not
-unregistered.
+echo "Installing wsl-migrate inside the clone"
+if ! cat "$0" | "$WSL_EXE" --distribution "$NEW_DISTRO" --user root --exec sh -c \
+  'umask 022; cat > /usr/local/bin/wsl-migrate && chmod 0755 /usr/local/bin/wsl-migrate'; then
+  cat >&2 <<EOF
+The full clone was imported, but wsl-migrate could not be installed inside it.
+The clone and retained export are still available:
+  Clone: $NEW_DISTRO
+  Export: $BACKUP_FILE
 EOF
-printf '%s\n' "$SOURCE_DISTRO" > "$REPORT_DIR/source-distro"
-
-echo "Migration complete."
-echo "Full backup: $BACKUP_FILE"
-echo "Report: $REPORT_DIR/README.txt"
-echo "Review $REPORT_DIR/packages-not-installed.txt and any saved shell configuration."
-echo "The source distro remains registered and unchanged."
-if [ "$SWITCH_DEFAULT" -eq 1 ]; then
-  printf 'Set %s as the default WSL distro now? [y/N] ' "$CURRENT_DISTRO"
-  IFS= read -r switch_answer || switch_answer=
-  case "$switch_answer" in
-    y|Y|yes|YES)
-      "$WSL_EXE" --set-default "$CURRENT_DISTRO"
-      echo "Default WSL distro set to $CURRENT_DISTRO."
-      echo "To roll back the default, run: wsl-migrate --rollback $SOURCE_DISTRO"
-      ;;
-    *) echo "Default distro was not changed." ;;
-  esac
+  exit 1
 fi
+
+echo
+echo "Full clone created successfully."
+echo "Source distro remains registered: $SOURCE_DISTRO"
+echo "New distro: $NEW_DISTRO"
+echo "Retained export: $BACKUP_FILE"
+echo "Install location: $INSTALL_LOCATION"
+echo "The cloned /etc/wsl.conf and default user are preserved."
+echo "Start the clone with: wsl.exe --distribution $NEW_DISTRO"
+printf 'Set the clone as default now? [y/N] '
+IFS= read -r switch_answer || switch_answer=
+case "$switch_answer" in
+  y|Y|yes|YES)
+    "$WSL_EXE" --set-default "$NEW_DISTRO"
+    echo "Default WSL distro set to $NEW_DISTRO."
+    echo "To restore the previous default: wsl-migrate --rollback $CURRENT_DISTRO"
+    ;;
+  *) echo "Default distro was not changed." ;;
+esac
