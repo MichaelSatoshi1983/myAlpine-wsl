@@ -86,11 +86,11 @@ WINDOWS_DIR=$(dirname -- "$WSL_EXE")
 CMD_EXE=$WINDOWS_DIR/cmd.exe
 [ -x "$CMD_EXE" ] || fail "cannot find cmd.exe beside wsl.exe"
 
-WINDOWS_TEMP=${WSL_TEMP:-$( "$CMD_EXE" /d /c echo %TEMP% | tr -d '\r' )}
-[ -n "$WINDOWS_TEMP" ] || fail "could not read Windows TEMP; set WSL_TEMP to a Windows temp path"
+WINDOWS_USERPROFILE=$( "$CMD_EXE" /d /c echo %USERPROFILE% | tr -d '\r' )
+[ -n "$WINDOWS_USERPROFILE" ] || fail "could not read the Windows user profile"
 
 if [ -z "$BACKUP_DIR" ]; then
-  BACKUP_DIR=$(wslpath -u "$WINDOWS_TEMP")/myAlpine-wsl-backups
+  BACKUP_DIR=$(wslpath -u "$WINDOWS_USERPROFILE")/Documents/myAlpine-wsl-backups
 fi
 if [ -z "$TARGET_USER" ]; then
   TARGET_USER=$(awk '
