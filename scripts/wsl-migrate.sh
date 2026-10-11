@@ -30,6 +30,7 @@ CLONE_IMPORTED=0
 CONTENT_MANIFEST=
 PREVIOUS_DEFAULT=
 SOURCE_USED_KB=
+CONTENT_DIFFERENCES=0
 
 load_distro_list() {
   if ! DISTRO_LIST=$("$WSL_EXE" --list --verbose 2>/dev/null); then
@@ -241,6 +242,8 @@ if [ "$RESUME" -eq 1 ]; then
   [ -r "$CHECKSUM_FILE" ] || fail "archive checksum file is missing; this archive cannot be resumed safely"
   EXPORT_SHA256=$(awk 'NR==1 {print $1}' "$CHECKSUM_FILE")
   [ "$(sha256sum "$BACKUP_FILE" | awk '{print $1}')" = "$EXPORT_SHA256" ] || fail "resume archive checksum does not match the saved checksum"
+  tar -tf "$BACKUP_FILE" >/dev/null 2>&1 || fail "resume archive is not a readable tar archive"
+  EXPORT_VALID=1
 else
   BACKUP_FILE=$BACKUP_DIR/$safe_name-$timestamp.tar
   CONTENT_MANIFEST=$BACKUP_FILE.content-manifest
@@ -478,9 +481,12 @@ echo "Comparing /home and Docker persistent file contents with the source manife
 tr -d '\r' < "$BACKUP_FILE.clone-content-manifest.raw" | LC_ALL=C sort > "$BACKUP_FILE.clone-content-manifest"
 rm -f -- "$BACKUP_FILE.clone-content-manifest.raw"
 if ! cmp -s "$CONTENT_MANIFEST" "$BACKUP_FILE.clone-content-manifest"; then
+  CONTENT_DIFFERENCES=1
   echo "Differences were found in /home or Docker persistent data:" >&2
   diff -u "$CONTENT_MANIFEST" "$BACKUP_FILE.clone-content-manifest" | sed -n '1,80p' >&2 || :
-  fail "content verification found differences; keep the archive and review the clone before using it"
+  printf 'Review the differences above. Type CONTINUE to keep the clone and record the warning: '
+  IFS= read -r answer || answer=
+  [ "$answer" = CONTINUE ] || fail "content differences need review; the clone and export have been retained"
 fi
 rm -f -- "$BACKUP_FILE.clone-content-manifest"
 
@@ -520,7 +526,12 @@ REPORT_FILE=$BACKUP_FILE.migration.txt
   printf 'Completed at (UTC): %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   printf 'Export SHA-256: %s\n' "$EXPORT_SHA256"
   printf 'Tar archive validation: passed\n'
-  printf 'Root filesystem, default-user, key configuration, and home/Docker content checks: passed\n'
+  printf 'Root filesystem, default-user, and key configuration checks: passed\n'
+  if [ "$CONTENT_DIFFERENCES" -eq 1 ]; then
+    printf 'Home/Docker differences: user reviewed and accepted\n'
+  else
+    printf 'Home/Docker content checks: passed\n'
+  fi
   printf 'SSH host keys regenerated: %s\n' "$REFRESH_SSH_KEYS"
 } > "$REPORT_FILE"
 MIGRATION_COMPLETE=1
@@ -536,7 +547,11 @@ echo "Install location: $INSTALL_LOCATION"
 echo "The cloned /etc/wsl.conf and default user are preserved."
 echo "The actual previous default distro was: $PREVIOUS_DEFAULT"
 echo "The export checksum is retained at: $CHECKSUM_FILE"
-echo "Regular file contents under /home and /var/lib/docker were compared."
+if [ "$CONTENT_DIFFERENCES" -eq 1 ]; then
+  echo "Home/Docker differences were reviewed and recorded in the report."
+else
+  echo "Regular file contents under /home and /var/lib/docker match the source manifest."
+fi
 echo "SSH host keys regenerated: $REFRESH_SSH_KEYS"
 echo "Start the clone with: wsl.exe --distribution $NEW_DISTRO"
 printf 'Set the clone as default now? [y/N] '
