@@ -12,7 +12,7 @@ wsl --import Alpine "$env:LOCALAPPDATA\AlpineWSL" .\alpine-wsl.tar.gz --version 
 wsl -d Alpine
 ```
 
-The image defaults to the `alpine` user and Windows 10 compatibility. In GitHub Actions, choose `windows10` or `windows11` under **Run workflow**. Scheduled and PR builds default to `windows10`. Both configurations use OpenRC and leave systemd disabled.
+The image defaults to the `alpine` user. GitHub Actions builds both Windows 10 and Windows 11 images for pull requests, manual runs, and the daily schedule. Both configurations use OpenRC and leave systemd disabled.
 
 Windows 10 builds omit `[boot]` from `/etc/wsl.conf`. On both targets, entering an interactive Zsh session inside WSL starts Docker through OpenRC if it is not already started. The startup helper initializes OpenRC's runtime state because WSL's init does not run the normal OpenRC boot sequence. To start it manually or inspect a startup error:
 
@@ -47,11 +47,11 @@ The script checks source/target sizes and backup space, then shows a processing 
 
 By default, it migrates `/home`, `/root`, `/opt`, `/srv`, `/usr/local`, `/var/www`, and application data under `/var/lib`. Add another persistent path with `--include /path`. For example, `sudo -E wsl-migrate --include /data Alpine` also copies `/data`. The script retains the new OS, APK database, WSL boot/network configuration, and machine identity. It installs packages from the old `/etc/apk/world` where current repositories can resolve them; if old version pins are unavailable, it shows the plan and asks before installing current versions. It recreates compatible non-system users/groups with matching numeric IDs and keeps conflicting identities for review.
 
-Old non-system `/etc` configuration files are merged. Missing files are copied automatically. When a file differs, the script lists the conflicts and asks whether to use the old or new versions. The complete old `/etc` tree is also retained under `/var/lib/wsl-migrate/<run>/source-etc/etc`; old system-owned files such as `/etc/wsl.conf`, account databases, APK state, OpenRC init scripts, host keys, and machine identity are preserved there but not activated. Compatible regular users and groups are recreated, including their password entries; root password settings remain from the new Release. The old WSL default user is applied only if that account exists in the new system. SSH host keys are regenerated for the new distro.
+Old non-system `/etc` configuration files are merged. Missing files are copied automatically. When a file differs, the script lists the conflicts and asks whether to use the old or new versions. The complete old `/etc` tree is also retained under `/var/lib/wsl-migrate/<run>/source-etc/etc`; old system-owned files such as `/etc/wsl.conf`, build metadata, account databases, APK state, OpenRC init scripts, host keys, and machine identity are preserved there but not activated. The new Release's `wsl-update`, `wsl-migrate`, Docker startup helper, build metadata, and compatibility shim remain in place. Compatible regular users and groups are recreated, including their password entries; root password settings remain from the new Release. The old WSL default user is applied only if that account exists in the new system. SSH host keys are regenerated for the new distro.
 
 Docker files under `/var/lib/docker` and other application data are copied while both Docker services are stopped. APK, OpenRC, DBus, and miscellaneous runtime state under `/var/lib` stays from the new Release. A newer Docker or kernel/storage driver may not be able to use old container state; the script reports this risk and verifies copied content, ownership, permissions, and symlink targets. If verification finds differences, it shows a short diff and requires typing `CONTINUE` to finish. Missing packages, user/group ID conflicts, and unavailable services are listed in the migration warnings and report. Old files outside the included paths remain in the full source export; add them explicitly with `--include`.
 
-Custom executables and libraries under `/usr/local`, `/opt`, and migrated application directories may depend on the old Alpine or musl version; they are preserved, but may need to be rebuilt or reconfigured for the new Release. The new Release's `wsl-migrate`, Docker startup helper, and JetBrains compatibility shim remain in place.
+Custom executables and libraries under `/usr/local`, `/opt`, and migrated application directories may depend on the old Alpine or musl version; they are preserved, but may need to be rebuilt or reconfigured for the new Release.
 
 If a run stops after creating the export, resume without exporting again: `sudo -E wsl-migrate --resume /mnt/c/Users/you/Documents/myAlpine-wsl-backups/Alpine-20261011T080000Z.tar Alpine`. The old distro remains registered throughout; no distro or backup is automatically deleted. To restore the previous WSL default, run `wsl-migrate --rollback` inside the new distro. The old distro and complete export remain available for recovery.
 
@@ -67,11 +67,11 @@ wsl-update
 
 The command checks for the newest published Release matching the image's Windows target and x64 architecture. It downloads the archive, verifies the SHA-256 checksum and embedded build metadata, then offers three choices:
 
-- **Automatic** imports the new image side by side under a Release-tagged WSL name in `%LOCALAPPDATA%\AlpineWSL\releases`, then starts the existing interactive `wsl-migrate` flow from the distro where `wsl-update` was run.
+- **Automatic** opens a separate PowerShell window, imports the new image side by side under a Release-tagged WSL name in `%LOCALAPPDATA%\AlpineWSL\releases`, and starts the interactive `wsl-migrate` flow there. The coordinator survives the source distro stopping during migration, restarts the new distro afterward, and checks its core commands and default user.
 - **Manual** keeps the verified archive under `Documents\myAlpine-wsl-updates` and prints the PowerShell import and migration commands.
 - **Skip** leaves the verified download in place without importing it.
 
-The migration still shows its overview and asks before changing data. The old distro remains registered. The updater never unregisters it or deletes its data.
+The migration still shows its overview and asks before changing data. The old distro remains registered. If a previous run imported the new distro but did not finish migration, run `wsl-update` again and choose **R** in the PowerShell recovery window to retry migration without importing over it. Partial downloads resume when you run the updater again. The updater never unregisters an old or new distro or deletes its data.
 
 Use these options to control the check:
 
@@ -141,7 +141,13 @@ Oh My Zsh is installed at a pinned commit during the build. Automatic updates ar
 
 ## Build metadata and releases
 
-`/etc/alpine-wsl-build` inside the image records the Alpine version, source commit, Windows target, Release tag, and UTC build time. GitHub Actions validates shell syntax, the packaged metadata, the updater command, and the target's WSL configuration. It uploads each successful build as an Actions artifact and publishes the root filesystem plus its SHA-256 file. Release tags follow `Alpine_DDMMYY_win10x64_<12-character-commit>` or `Alpine_DDMMYY_win11x64_<12-character-commit>`; the date is UTC. Scheduled builds publish a dated Release for the selected Windows target.
+`/etc/alpine-wsl-build` inside the image records the Alpine version, source commit, Windows target, Release tag, and UTC build time. GitHub Actions validates shell syntax, the packaged metadata, both update commands, and the target's WSL configuration. It uploads each target as a separate Actions artifact and publishes both root filesystems with their SHA-256 files. Release tags follow `Alpine_DDMMYY_win10x64_<12-character-commit>` or `Alpine_DDMMYY_win11x64_<12-character-commit>`; the date is UTC.
+
+To exercise a built image on Windows, run the isolated integration check from PowerShell. It imports temporary source and target distros, performs a real data migration, restarts the target, checks the migrated marker and default user, verifies the existing WSL default was unchanged, then unregisters only those temporary distros:
+
+```powershell
+.\scripts\test-wsl-integration.ps1 -ArchivePath .\alpine-wsl.tar.gz
+```
 
 The startup helper uses OpenRC (`rc-service --nodeps --ifnotstarted docker start`); Alpine's default service manager is OpenRC. WSL provides the network, devices, and mounts, so the helper skips the normal OpenRC boot dependencies. Docker Engine requires WSL 2 and working kernel support for containers. The Windows host's WSL kernel configuration can limit Docker features.
 

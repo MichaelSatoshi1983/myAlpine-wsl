@@ -54,8 +54,17 @@ case "$WINDOWS_TARGET" in
   *) fail "unsupported Windows target in build metadata: $WINDOWS_TARGET" ;;
 esac
 
+LOCK_DIR=${TMPDIR:-/tmp}/wsl-update-$PLATFORM.lock
+if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+  fail "another wsl-update operation is already running for $PLATFORM"
+fi
+trap 'rmdir "$LOCK_DIR" 2>/dev/null || :' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
 [ -n "$CURRENT_DISTRO" ] || fail "WSL_DISTRO_NAME is unavailable; run this command inside the registered distro"
 [ -n "$BUILT_AT" ] || fail "build timestamp is missing from $METADATA"
+case "$CURRENT_DISTRO" in *[!A-Za-z0-9_.-]*|'') fail "this source distro name contains characters unsupported by wsl-migrate: $CURRENT_DISTRO" ;; esac
 
 TAG_PATTERN=$(printf '^Alpine_[0-9]{6}_%s_[0-9a-f]{12}$' "$PLATFORM")
 printf 'Checking the latest %s Release...\n' "$PLATFORM"
@@ -146,16 +155,29 @@ CHECKSUM_TMP="$DOWNLOAD_DIR/$CHECKSUM_NAME.part"
 METADATA_TMP="$DOWNLOAD_DIR/build-info-$$.txt"
 
 printf 'Downloading and verifying %s...\n' "$ASSET_NAME"
-curl -fsSL --retry 3 -o "$ARCHIVE_TMP" "$ASSET_URL" || fail "could not download the root filesystem"
+DOWNLOAD_STATUS=0
+curl -fsSL --retry 3 -C - -o "$ARCHIVE_TMP" "$ASSET_URL" || DOWNLOAD_STATUS=$?
+if [ "$DOWNLOAD_STATUS" -eq 33 ]; then
+  rm -f "$ARCHIVE_TMP"
+  curl -fsSL --retry 3 -o "$ARCHIVE_TMP" "$ASSET_URL" || fail "could not download the root filesystem"
+elif [ "$DOWNLOAD_STATUS" -ne 0 ]; then
+  fail "download interrupted; run wsl-update again to continue from the partial archive"
+fi
 curl -fsSL --retry 3 -o "$CHECKSUM_TMP" "$CHECKSUM_URL" || fail "could not download the SHA-256 file"
 EXPECTED_SHA=$(awk 'NR == 1 { print $1; exit }' "$CHECKSUM_TMP")
 printf '%s\n' "$EXPECTED_SHA" | grep -Eq '^[0-9a-f]{64}$' || fail "the Release SHA-256 file is invalid"
 ACTUAL_SHA=$(sha256sum "$ARCHIVE_TMP" | awk '{ print $1 }')
-[ "$EXPECTED_SHA" = "$ACTUAL_SHA" ] || fail "the downloaded archive does not match its SHA-256 file"
+if [ "$EXPECTED_SHA" != "$ACTUAL_SHA" ]; then
+  rm -f "$ARCHIVE_TMP"
+  fail "the downloaded archive did not match its SHA-256 file; the incomplete copy was removed, so run wsl-update again"
+fi
 case "$ASSET_DIGEST" in
   sha256:*)
     API_SHA=$(printf '%s\n' "$ASSET_DIGEST" | cut -d ':' -f 2)
-    [ "$API_SHA" = "$ACTUAL_SHA" ] || fail "the downloaded archive does not match GitHub's asset digest"
+    if [ "$API_SHA" != "$ACTUAL_SHA" ]; then
+      rm -f "$ARCHIVE_TMP"
+      fail "the downloaded archive did not match GitHub's asset digest; the copy was removed, so run wsl-update again"
+    fi
     ;;
 esac
 tar -tzf "$ARCHIVE_TMP" >/dev/null 2>&1 || fail "the downloaded archive is not a valid gzip tar file"
@@ -204,26 +226,22 @@ if [ "$MODE" = manual ]; then
   exit 0
 fi
 
-REGISTERED=$("$WSL_EXE" --list --quiet 2>/dev/null | tr -d '\r\000' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' || true)
-if printf '%s\n' "$REGISTERED" | grep -Fx "$LATEST_TAG" >/dev/null; then
-  printf 'The distro %s is already registered. It was left untouched.\n' "$LATEST_TAG"
-  printf 'Open it with: wsl -d "%s"\n' "$LATEST_TAG"
-  printf 'Verified archive: %s\n' "$ARCHIVE_WIN"
-  exit 1
-fi
+POWERSHELL_EXE="$WINDOWS_ROOT_WSL/System32/WindowsPowerShell/v1.0/powershell.exe"
+[ -f "$POWERSHELL_EXE" ] || fail "could not find Windows PowerShell"
 
-mkdir -p "$INSTALL_DIR"
-printf '\nImporting the new distro as %s...\n' "$LATEST_TAG"
-if ! "$WSL_EXE" --import "$LATEST_TAG" "$INSTALL_DIR_WIN" "$ARCHIVE_WIN" --version 2; then
-  printf 'Import failed. The old distro and verified archive remain available.\n' >&2
-  exit 1
-fi
+PS_HELPER="$DOWNLOAD_DIR/wsl-update.ps1"
+PS_STATE="$DOWNLOAD_DIR/update-state.json"
+tar -xOzf "$DOWNLOAD_DIR/$ASSET_NAME" ./usr/local/lib/wsl-update.ps1 > "$PS_HELPER" || fail "the archive does not contain the Windows update coordinator"
+jq -n \
+  --arg tag "$LATEST_TAG" \
+  --arg sourceDistro "$CURRENT_DISTRO" \
+  --arg installPath "$INSTALL_DIR_WIN" \
+  --arg archivePath "$ARCHIVE_WIN" \
+  --arg sha256 "$ACTUAL_SHA" \
+  '{tag:$tag,sourceDistro:$sourceDistro,installPath:$installPath,archivePath:$archivePath,sha256:$sha256}' > "$PS_STATE"
+PS_HELPER_WIN=$(wslpath -w "$PS_HELPER") || fail "could not translate the coordinator path"
+PS_STATE_WIN=$(wslpath -w "$PS_STATE") || fail "could not translate the update state path"
 
-printf '\nStarting the interactive migration from %s into %s...\n' "$CURRENT_DISTRO" "$LATEST_TAG"
-if "$WSL_EXE" --distribution "$LATEST_TAG" --user root --exec /usr/local/bin/wsl-migrate "$CURRENT_DISTRO"; then
-  printf '\nMigration command finished. Both WSL distros remain registered.\n'
-else
-  printf '\nMigration did not finish. The new distro is still registered, and the old distro remains unchanged.\n' >&2
-  printf 'Resume or inspect the migration from: wsl -d "%s" -u root\n' "$LATEST_TAG" >&2
-  exit 1
-fi
+printf '\nHanding the update to a separate PowerShell window. The source distro can now stop safely during migration.\n'
+"$POWERSHELL_EXE" -NoLogo -NoProfile -ExecutionPolicy Bypass -File "$PS_HELPER_WIN" -StateFile "$PS_STATE_WIN" || fail "could not start the Windows update coordinator"
+printf 'The coordinator will import %s, run migration, restart the new distro, and check its core commands.\n' "$LATEST_TAG"
