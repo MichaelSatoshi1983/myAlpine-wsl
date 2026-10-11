@@ -39,7 +39,8 @@ jobs:
           sh -n scripts/setup.sh
           sh -n scripts/wsl-start-docker.sh
           sh -n scripts/wsl-migrate.sh
-          shellcheck scripts/build.sh scripts/setup.sh scripts/wsl-start-docker.sh scripts/wsl-migrate.sh
+          sh -n scripts/wsl-update.sh
+          shellcheck scripts/build.sh scripts/setup.sh scripts/wsl-start-docker.sh scripts/wsl-migrate.sh scripts/wsl-update.sh
 
   build:
     name: Build root filesystem
@@ -53,6 +54,18 @@ jobs:
       - name: checkout repository
         uses: actions/checkout@v4
 
+      - name: prepare release identity
+        id: release_identity
+        run: |
+          case "$WSL_WINDOWS_VERSION" in
+            windows10) platform=win10x64 ;;
+            windows11) platform=win11x64 ;;
+            *) echo "unsupported Windows target: $WSL_WINDOWS_VERSION" >&2; exit 2 ;;
+          esac
+          commit_prefix=$(printf '%s' "$GITHUB_SHA" | cut -c 1-12)
+          release_tag="Alpine_$(date -u +%d%m%y)_${platform}_${commit_prefix}"
+          echo "tag=$release_tag" >> "$GITHUB_OUTPUT"
+
       - name: install build dependencies
         run: sudo apt-get update && sudo apt-get install -y wget tar
 
@@ -64,13 +77,19 @@ jobs:
       - name: build Alpine rootfs
         env:
           BUILD_COMMIT: ${{ github.sha }}
-        run: sudo env BUILD_COMMIT="$BUILD_COMMIT" WSL_WINDOWS_VERSION="$WSL_WINDOWS_VERSION" ./scripts/build.sh
+          BUILD_RELEASE_TAG: ${{ steps.release_identity.outputs.tag }}
+        run: sudo env BUILD_COMMIT="$BUILD_COMMIT" BUILD_RELEASE_TAG="$BUILD_RELEASE_TAG" WSL_WINDOWS_VERSION="$WSL_WINDOWS_VERSION" ./scripts/build.sh
+
+      - name: generate archive checksum
+        run: sha256sum alpine-wsl.tar.gz > alpine-wsl.tar.gz.sha256
 
       - name: upload root filesystem
         uses: actions/upload-artifact@v4
         with:
           name: alpine-wsl
-          path: alpine-wsl.tar.gz
+          path: |
+            alpine-wsl.tar.gz
+            alpine-wsl.tar.gz.sha256
           if-no-files-found: error
 
   inspect:
@@ -95,10 +114,19 @@ jobs:
         id: metadata
         run: |
           tar -tzf alpine-wsl.tar.gz | grep -Fx './usr/local/bin/wsl-migrate'
+          tar -tzf alpine-wsl.tar.gz | grep -Fx './usr/local/bin/wsl-update'
           tar -xOf alpine-wsl.tar.gz ./etc/alpine-wsl-build > build-info.txt
           grep -Eq '^Alpine version: [0-9]+\.[0-9]+\.[0-9]+$' build-info.txt
           grep -Eq '^Source commit: [0-9a-f]{40}$' build-info.txt
           grep -Fx "Windows target: $WSL_WINDOWS_VERSION" build-info.txt
+          release_tag=$(sed -n 's/^Release tag: //p' build-info.txt)
+          case "$WSL_WINDOWS_VERSION" in
+            windows10) platform=win10x64 ;;
+            windows11) platform=win11x64 ;;
+          esac
+          source_commit=$(sed -n 's/^Source commit: //p' build-info.txt)
+          commit_prefix=$(printf '%s' "$source_commit" | cut -c 1-12)
+          printf '%s\n' "$release_tag" | grep -Eq "^Alpine_[0-9]{6}_${platform}_${commit_prefix}$"
           tar -xOf alpine-wsl.tar.gz ./etc/wsl.conf > wsl.conf
           if grep -Eq '^[[:space:]]*systemd[[:space:]]*=[[:space:]]*true' wsl.conf; then
             echo "OpenRC builds must not enable systemd" >&2
@@ -116,7 +144,7 @@ jobs:
           grep -Eq '^Built at \(UTC\): [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$' build-info.txt
           alpine_version=$(sed -n 's/^Alpine version: //p' build-info.txt)
           echo "alpine_version=$alpine_version" >> "$GITHUB_OUTPUT"
-          echo "tag=alpine-v${alpine_version}-${GITHUB_SHA::8}-${WSL_WINDOWS_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=$release_tag" >> "$GITHUB_OUTPUT"
 
   release:
     name: Publish GitHub release
@@ -155,9 +183,11 @@ jobs:
         with:
           tag_name: ${{ needs.inspect.outputs.tag }}
           target_commitish: ${{ github.sha }}
-          name: Alpine WSL ${{ needs.inspect.outputs.tag }}
+          name: ${{ needs.inspect.outputs.tag }}
           body: |
             Alpine version: ${{ needs.inspect.outputs.alpine_version }}
             Source commit: ${{ github.sha }}
             Windows target: ${{ env.WSL_WINDOWS_VERSION }}
-          files: alpine-wsl.tar.gz
+          files: |
+            alpine-wsl.tar.gz
+            alpine-wsl.tar.gz.sha256
