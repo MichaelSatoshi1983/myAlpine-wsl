@@ -55,6 +55,14 @@ apk add \
   docker-cli-compose \
   docker-openrc
 
+echo "build JetBrains musl compatibility shim"
+
+mkdir -p /usr/local/lib
+gcc -shared -fPIC -O2 -Wall -Wextra -Werror \
+  -o /usr/local/lib/libjbr-musl-shim.so \
+  /jbr-musl-shim.c
+rm -f /jbr-musl-shim.c
+
 echo "install global npm packages"
 
 npm install -g \
@@ -171,6 +179,13 @@ fi
 source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
 # Keep syntax highlighting last so it sees the other plugins' widgets.
 source /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+EOF
+
+cat > "/home/$WSL_USERNAME/.zshenv" <<'EOF'
+# JetBrains Runtime expects several glibc large-file symbols that musl lacks.
+export LD_PRELOAD=/usr/local/lib/libjbr-musl-shim.so
+# Work around a verifier failure reported with some JetBrains backends on Alpine.
+export _JAVA_OPTIONS=-Xverify:none
 EOF
 
 echo "create common directories"

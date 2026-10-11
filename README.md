@@ -48,6 +48,12 @@ sudo env WSL_USERNAME=developer BUILD_COMMIT="$(git rev-parse HEAD)" ./scripts/b
 
 The image includes Zsh, Bash, Git, OpenSSH, Neovim, tmux, common shell utilities, Go, Ruby, Node.js/npm, pnpm, TypeScript, Docker Engine, Docker CLI, and the Docker Compose CLI plugin. The image targets x86_64 only.
 
+## JetBrains Remote Development
+
+The image includes a musl compatibility shim for JetBrains Runtime and configures it in the default user's Zsh environment. This works around missing glibc large-file symbols and a verifier failure reported with some JetBrains backends on Alpine. The workaround is based on [this Alpine JetBrains Remote Development guide](https://www.eth0.bond/2026/06/03/%E6%AD%A3%E7%A1%AE%E9%85%8D%E7%BD%AE%20Alpine%20%E4%B8%8A%E7%9A%84%20Jetbrains%20%E8%BF%9C%E7%A8%8B%E5%BC%80%E5%8F%91/).
+
+JetBrains documents glibc-based Linux hosts for Remote Development and does not list Alpine as supported. This compatibility layer is a community workaround; behavior may vary across IDE and JBR versions. Gateway must connect through the configured user's Zsh login environment for these settings to apply.
+
 ## Network diagnostics
 
 The image includes `iproute2`, `bind-tools`, `iputils`, `traceroute`, `mtr`, `netcat-openbsd`, and `tcpdump`. Builds check that their main commands are available.
