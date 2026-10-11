@@ -88,7 +88,6 @@ fi
 case "$BACKUP_DIR" in /mnt/[A-Za-z]/*) ;; *) fail "backup directory must be on a mounted Windows drive, such as /mnt/c/Users/...";; esac
 case "$INSTALL_LOCATION" in /mnt/[A-Za-z]/*) ;; *) fail "install location must be on a mounted Windows drive, such as /mnt/c/Users/...";; esac
 [ ! -e "$INSTALL_LOCATION" ] || fail "install location already exists; choose an empty, unused path: $INSTALL_LOCATION"
-WINDOWS_BACKUP_DIR=$(wslpath -w "$BACKUP_DIR")
 WINDOWS_INSTALL_LOCATION=$(wslpath -w "$INSTALL_LOCATION")
 timestamp=$(date -u +%Y%m%dT%H%M%SZ)
 BACKUP_FILE=$BACKUP_DIR/$safe_name-$timestamp.tar
@@ -164,7 +163,8 @@ The full clone was imported, but wsl-migrate could not be installed inside it.
 The clone and retained export are still available:
   Clone: $NEW_DISTRO
   Export: $BACKUP_FILE
-Install the script manually by piping it from the source distro into the clone as root.
+Retry the installation step from this source distro with:
+  cat "$SCRIPT_PATH" | "$WSL_EXE" --distribution "$NEW_DISTRO" --user root --exec sh -c 'umask 022; cat > /usr/local/bin/wsl-migrate && chmod 0755 /usr/local/bin/wsl-migrate'
 EOF
   exit 1
 fi
