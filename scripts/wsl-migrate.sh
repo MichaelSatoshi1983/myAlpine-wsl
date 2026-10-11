@@ -420,6 +420,7 @@ echo "Installing wsl-migrate inside the clone"
 SCRIPT_PATH=$0
 case "$SCRIPT_PATH" in */*) ;; *) SCRIPT_PATH=$(command -v "$SCRIPT_PATH") ;; esac
 [ -f "$SCRIPT_PATH" ] || fail "cannot locate the running script to install it in the clone"
+# shellcheck disable=SC2016
 "$WSL_EXE" --distribution "$NEW_DISTRO" --user root --exec sh -c \
   'set -e; umask 022; mkdir -p /usr/local/bin /etc/wsl-migrate; tmp=/usr/local/bin/.wsl-migrate.tmp; cat > "$tmp"; chmod 0755 "$tmp"; mv -f "$tmp" /usr/local/bin/wsl-migrate; printf "%s\n" "$1" > /etc/wsl-migrate/previous-default' sh "$PREVIOUS_DEFAULT" < "$SCRIPT_PATH" || fail "could not install wsl-migrate in the clone; recovery details follow"
 UTILITY_INSTALLED=1
@@ -441,7 +442,9 @@ verify_archive_file() {
   archive_hash=$(tar -xOf "$BACKUP_FILE" "$archive_member" | sha256sum | awk '{print $1}')
   clone_hash_line=$("$WSL_EXE" --distribution "$NEW_DISTRO" --user root --exec sha256sum "/$verify_path" 2>/dev/null) || fail "could not hash /$verify_path inside the clone"
   clone_hash=$(printf '%s\n' "$clone_hash_line" | awk 'NR==1 {print $1}' | tr -d '\r')
-  [ -n "$archive_hash" ] && [ "$archive_hash" = "$clone_hash" ] || fail "export and clone differ for /$verify_path"
+  if [ -z "$archive_hash" ] || [ "$archive_hash" != "$clone_hash" ]; then
+    fail "export and clone differ for /$verify_path"
+  fi
 }
 echo "Comparing important configuration files with the export"
 verify_archive_file etc/passwd 1
