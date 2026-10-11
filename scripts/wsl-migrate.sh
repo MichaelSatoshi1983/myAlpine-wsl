@@ -77,8 +77,6 @@ if [ -z "${WSL_EXE:-}" ]; then
       break
     fi
   done
-else
-  WSL_EXE=$WSL_EXE
 fi
 [ -n "${WSL_EXE:-}" ] || fail "cannot find wsl.exe; set WSL_EXE to its mounted Windows path"
 
@@ -112,7 +110,9 @@ case "$TARGET_USER" in
 esac
 [ "$(id -un)" = "$TARGET_USER" ] || fail "run as the target user: $TARGET_USER"
 TARGET_HOME=$(awk -F: -v user="$TARGET_USER" '$1 == user { print $6; exit }' /etc/passwd)
-[ -n "$TARGET_HOME" ] && [ -d "$TARGET_HOME" ] || fail "target home directory was not found"
+if [ -z "$TARGET_HOME" ] || [ ! -d "$TARGET_HOME" ]; then
+  fail "target home directory was not found"
+fi
 
 if [ "$DRY_RUN" -eq 1 ]; then
   cat <<EOF
@@ -137,7 +137,7 @@ case "$answer" in
 esac
 
 mkdir -p "$BACKUP_DIR"
-BACKUP_DIR=$(CDPATH= cd -- "$BACKUP_DIR" && pwd)
+BACKUP_DIR=$(CDPATH='' cd -- "$BACKUP_DIR" && pwd)
 WINDOWS_BACKUP_DIR=$(wslpath -w "$BACKUP_DIR")
 
 timestamp=$(date -u +%Y%m%dT%H%M%SZ)
@@ -216,7 +216,7 @@ fi
 if tar -tf "$BACKUP_FILE" | grep -Fxq "${ARCHIVE_PREFIX}etc/apk/world"; then
   tar -xOf "$BACKUP_FILE" "${ARCHIVE_PREFIX}etc/apk/world" > "$STAGING_DIR/apk-world"
   echo "Refreshing Alpine package indexes"
-  if sudo apk update >> "$REPORT_DIR/apk.log" 2>&1; then
+  if sudo sh -c 'apk update >> "$1" 2>&1' sh "$REPORT_DIR/apk.log"; then
     while IFS= read -r package || [ -n "$package" ]; do
       case "$package" in
         ''|\#*) continue ;;
@@ -225,7 +225,7 @@ if tar -tf "$BACKUP_FILE" | grep -Fxq "${ARCHIVE_PREFIX}etc/apk/world"; then
         printf '%s (unsupported world entry)\n' "$package" >> "$REPORT_DIR/packages-not-installed.txt"
         continue
       fi
-      if sudo apk add "$package" >> "$REPORT_DIR/apk.log" 2>&1; then
+      if sudo sh -c 'apk add "$1" >> "$2" 2>&1' sh "$package" "$REPORT_DIR/apk.log"; then
         printf '%s\n' "$package" >> "$REPORT_DIR/packages-installed.txt"
       else
         printf '%s\n' "$package" >> "$REPORT_DIR/packages-not-installed.txt"
