@@ -227,6 +227,8 @@ done
 [ -w "$BACKUP_PARENT" ] || fail "backup location is not writable: $BACKUP_PARENT"
 AVAILABLE_KB=$(df -Pk "$BACKUP_PARENT" 2>/dev/null | awk 'END {print $4}')
 case "$AVAILABLE_KB" in *[!0-9]*|'') AVAILABLE_GB=unknown ;; *) AVAILABLE_GB=$(awk -v kb="$AVAILABLE_KB" 'BEGIN {printf "%.1f", kb / 1048576}') ;; esac
+INSTALL_AVAILABLE_KB=$(df -Pk "$INSTALL_PARENT" 2>/dev/null | awk 'END {print $4}')
+case "$INSTALL_AVAILABLE_KB" in *[!0-9]*|'') INSTALL_AVAILABLE_GB=unknown ;; *) INSTALL_AVAILABLE_GB=$(awk -v kb="$INSTALL_AVAILABLE_KB" 'BEGIN {printf "%.1f", kb / 1048576}') ;; esac
 WINDOWS_INSTALL_LOCATION=$(wslpath -w "$INSTALL_LOCATION")
 timestamp=$(date -u +%Y%m%dT%H%M%SZ)
 if [ "$RESUME" -eq 1 ]; then
@@ -255,7 +257,7 @@ New cloned distro: $NEW_DISTRO
 Full export: $BACKUP_FILE
 New distro install location: $INSTALL_LOCATION
 Import version: WSL $TARGET_WSL_VERSION (preserving the source version)
-Free space on backup drive: $AVAILABLE_GB GiB
+Free space: backup drive $AVAILABLE_GB GiB; install drive $INSTALL_AVAILABLE_GB GiB
 
 This creates a full clone of the old distro. It does not upgrade the cloned
 Alpine/system packages to the current Release image. Neither distro is removed.
@@ -272,7 +274,8 @@ Source WSL version: WSL $SOURCE_WSL_VERSION
 Clone WSL version: WSL $TARGET_WSL_VERSION (same as source)
 Full export backup: $BACKUP_FILE
 New install location: $INSTALL_LOCATION
-Free space on backup drive: $AVAILABLE_GB GiB
+Previous default distro: $PREVIOUS_DEFAULT
+Free space: backup drive $AVAILABLE_GB GiB; install drive $INSTALL_AVAILABLE_GB GiB
 
 Will be copied as a full distro clone:
   - Alpine/system files, installed packages, users, home directories,
@@ -402,9 +405,9 @@ if [ "$RESUME" -eq 0 ]; then
   "$WSL_EXE" --export "$SOURCE_DISTRO" "$WINDOWS_BACKUP"
   [ -s "$BACKUP_FILE" ] || fail "export did not create a non-empty backup"
   tar -tf "$BACKUP_FILE" >/dev/null 2>&1 || fail "export is not a readable tar archive"
-  EXPORT_VALID=1
   EXPORT_SHA256=$(sha256sum "$BACKUP_FILE" | awk '{print $1}')
   printf '%s  %s\n' "$EXPORT_SHA256" "$(basename -- "$BACKUP_FILE")" > "$CHECKSUM_FILE"
+  EXPORT_VALID=1
 else
   [ -s "$BACKUP_FILE" ] || fail "resume archive is missing or empty"
   tar -tf "$BACKUP_FILE" >/dev/null 2>&1 || fail "resume archive is not a readable tar archive"
@@ -500,8 +503,12 @@ if [ "$REFRESH_SSH_KEYS" -eq 1 ]; then
   ' || fail "could not regenerate SSH host keys in the clone"
 fi
 
-EXPORT_SHA256=$(sha256sum "$BACKUP_FILE" | awk '{print $1}')
-[ -n "$EXPORT_SHA256" ] || fail "could not calculate the export checksum"
+CALCULATED_EXPORT_SHA256=$(sha256sum "$BACKUP_FILE" | awk '{print $1}')
+[ -n "$CALCULATED_EXPORT_SHA256" ] || fail "could not calculate the export checksum"
+if [ "$CALCULATED_EXPORT_SHA256" != "$EXPORT_SHA256" ]; then
+  fail "export checksum changed during migration"
+fi
+EXPORT_SHA256=$CALCULATED_EXPORT_SHA256
 REPORT_FILE=$BACKUP_FILE.migration.txt
 {
   printf 'Source distro: %s\n' "$SOURCE_DISTRO"
