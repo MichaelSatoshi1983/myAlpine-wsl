@@ -3,7 +3,8 @@ set -eu
 
 usage() {
   cat <<'EOF'
-Usage: wsl-migrate [--dry-run] [--source-user NAME] [--target-user NAME] [--backup-dir PATH] SOURCE_DISTRO
+Usage: wsl-migrate [--dry-run] [--switch-default] [--source-user NAME] [--target-user NAME] [--backup-dir PATH] SOURCE_DISTRO
+       wsl-migrate --rollback SOURCE_DISTRO
 
 Export SOURCE_DISTRO to a retained backup, then migrate its home files and
 Alpine package list into the current WSL distribution.
@@ -16,6 +17,8 @@ fail() {
 }
 
 DRY_RUN=0
+SWITCH_DEFAULT=0
+ROLLBACK=0
 SOURCE_USER=
 TARGET_USER=
 BACKUP_DIR=
@@ -25,6 +28,14 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --dry-run)
       DRY_RUN=1
+      shift
+      ;;
+    --switch-default)
+      SWITCH_DEFAULT=1
+      shift
+      ;;
+    --rollback)
+      ROLLBACK=1
       shift
       ;;
     --source-user)
@@ -80,6 +91,14 @@ if [ -z "${WSL_EXE:-}" ]; then
 fi
 [ -n "${WSL_EXE:-}" ] || fail "cannot find wsl.exe; set WSL_EXE to its mounted Windows path"
 
+if [ "$ROLLBACK" -eq 1 ]; then
+  [ "$DRY_RUN" -eq 0 ] || fail "--dry-run cannot be combined with --rollback"
+  [ "$SWITCH_DEFAULT" -eq 0 ] || fail "--switch-default cannot be combined with --rollback"
+  "$WSL_EXE" --set-default "$SOURCE_DISTRO"
+  echo "Default WSL distro set to $SOURCE_DISTRO. No distro data was changed."
+  exit 0
+fi
+
 WINDOWS_DIR=$(dirname -- "$WSL_EXE")
 CMD_EXE=$WINDOWS_DIR/cmd.exe
 [ -x "$CMD_EXE" ] || fail "cannot find cmd.exe beside wsl.exe"
@@ -120,6 +139,7 @@ Source distro: $SOURCE_DISTRO
 Current distro: $CURRENT_DISTRO
 Target user: $TARGET_USER
 Backup directory: $BACKUP_DIR
+Switch default after migration: $SWITCH_DEFAULT
 
 The command will export the source distro, retain the export, copy the source
 user's home files into the target user, and try to install packages from
@@ -244,6 +264,8 @@ Target distro: $CURRENT_DISTRO
 Target user: $TARGET_USER
 Full source export: $BACKUP_FILE
 
+printf '%s\n' "$SOURCE_DISTRO" > "$REPORT_DIR/source-distro"
+
 Home files were copied. Existing target files replaced during the copy are
 saved in $TARGET_HOME/.wsl-migration-conflicts/$timestamp.
 The release-managed .zshrc, .zshenv, and Oh My Zsh installation were kept.
@@ -261,3 +283,15 @@ echo "Full backup: $BACKUP_FILE"
 echo "Report: $REPORT_DIR/README.txt"
 echo "Review $REPORT_DIR/packages-not-installed.txt and any saved shell configuration."
 echo "The source distro remains registered and unchanged."
+if [ "$SWITCH_DEFAULT" -eq 1 ]; then
+  printf 'Set %s as the default WSL distro now? [y/N] ' "$CURRENT_DISTRO"
+  IFS= read -r switch_answer || switch_answer=
+  case "$switch_answer" in
+    y|Y|yes|YES)
+      "$WSL_EXE" --set-default "$CURRENT_DISTRO"
+      echo "Default WSL distro set to $CURRENT_DISTRO."
+      echo "To roll back the default, run: wsl-migrate --rollback $SOURCE_DISTRO"
+      ;;
+    *) echo "Default distro was not changed." ;;
+  esac
+fi
