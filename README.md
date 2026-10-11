@@ -34,7 +34,7 @@ Container output logs use the `json-file` driver with rotation: each file is lim
 
 ## Migrate from an existing WSL distro
 
-The new image includes an interactive `wsl-migrate` command. It makes a full WSL export of the old distro, then imports that export under a second name. The old distro stays registered, and the clone contains the old distro's persistent filesystem: Alpine version, installed packages, system configuration, users, home files, and Docker images, containers, and volumes.
+The new image includes an interactive `wsl-migrate` command. It makes a full WSL export of the old distro, then imports it under a second name. The old distro stays registered, and the clone contains its persistent filesystem: Alpine version, installed packages, system configuration, users, home files, and Docker images, containers, and volumes.
 
 Start the new image and run the command there. Replace `Alpine` with the old distro name from `wsl -l -q` in PowerShell:
 
@@ -43,17 +43,12 @@ wsl-migrate --dry-run Alpine
 wsl-migrate Alpine
 ```
 
-The script proposes `Alpine-migrated` as the new name and asks before stopping the old distro. It retains a full export under `Documents/myAlpine-wsl-backups` and imports the clone as WSL 2 under `%LOCALAPPDATA%/AlpineWSL-<new-name>`. Use `--backup-dir` and `--install-location` to choose different paths on mounted Windows drives. It also offers to make the clone the default after import; it never unregisters either distro or deletes the export. To restore the prior default later, run `wsl-migrate --rollback Alpine`.
+Before changing anything, the script checks that the source is registered, the new distro name is unused, the install path is available, and the source WSL version can be read. It displays the free space on the backup drive. The overview explains what is included and excluded, what commands will run, and the risks. The script preserves the source WSL version (1 or 2), asks whether to regenerate SSH host keys in the clone, then requires typing `YES` before stopping the old distro.
 
-A full clone preserves the old environment; it does not upgrade the cloned Alpine packages or system files to the new Release image. The script warns and asks before continuing because:
+The export is kept under `Documents/myAlpine-wsl-backups`; the clone is imported under `%LOCALAPPDATA%/AlpineWSL-<new-name>`. Use `--backup-dir` and `--install-location` to choose different paths on mounted Windows drives. After import, the script checks that WSL registered the clone at the expected version, verifies key root filesystem files, and confirms the configured default user can run a command. It writes a migration report with the export SHA-256 next to the retained archive. If a step fails, it leaves the source and any backup or clone in place, and prints recovery guidance. It never unregisters a distro or deletes the export.
 
-- a WSL 1 source will be imported as WSL 2, which can change behavior;
-- Windows-side `.wslconfig`, Windows Terminal profiles, WSL registration settings, and files outside the distro filesystem are not included;
-- the old `/etc/wsl.conf` is kept verbatim, so boot commands and default-user settings may need review;
-- running both copies can start duplicate services and Docker workloads, contend for ports, or access the same cloned container data;
-- the source is terminated before export so filesystem and Docker data are captured consistently; unsaved process state is lost.
+A full clone preserves the old environment; it does not upgrade the cloned Alpine packages or system files to the new Release image. Windows-side `.wslconfig`, Windows Terminal profiles, WSL registration settings, and files outside the distro filesystem are not included. The old `/etc/wsl.conf` and host identity files are copied. If both copies provide network services, they can share SSH host keys and machine identity; run one copy at a time or choose to regenerate SSH host keys in the clone. The old distro remains available; to restore it as the default, run `wsl-migrate --rollback Alpine`.
 
-The full export is kept as a recovery copy. Check that Windows has enough free disk space before starting. After import, test the clone before making it your default. The script itself is added to the clone as `/usr/local/bin/wsl-migrate`.
 
 ## Build locally
 
