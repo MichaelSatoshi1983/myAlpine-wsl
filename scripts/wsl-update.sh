@@ -88,16 +88,14 @@ fi
 
 LATEST_DATE_PART=$(printf '%s\n' "$LATEST_TAG" | cut -d '_' -f 2)
 LATEST_DATE=$(printf '%s\n' "$LATEST_DATE_PART" | awk '{ print "20" substr($0, 5, 2) substr($0, 3, 2) substr($0, 1, 2) }')
-case "$CURRENT_RELEASE" in
-  Alpine_[0-9][0-9][0-9][0-9][0-9][0-9]_"$PLATFORM"_????????????)
-    CURRENT_DATE_PART=$(printf '%s\n' "$CURRENT_RELEASE" | cut -d '_' -f 2)
-    CURRENT_DATE=$(printf '%s\n' "$CURRENT_DATE_PART" | awk '{ print "20" substr($0, 5, 2) substr($0, 3, 2) substr($0, 1, 2) }')
-    ;;
-  *)
-    CURRENT_DATE=$(printf '%s\n' "$BUILT_AT" | cut -c 1-10 | tr -d '-')
-    ;;
-esac
-printf '%s\n' "$LATEST_DATE" "$CURRENT_DATE" | grep -Eq '^[0-9]{8}$' || fail "could not compare Release dates"
+if printf '%s\n' "$CURRENT_RELEASE" | grep -Eq "$TAG_PATTERN"; then
+  CURRENT_DATE_PART=$(printf '%s\n' "$CURRENT_RELEASE" | cut -d '_' -f 2)
+  CURRENT_DATE=$(printf '%s\n' "$CURRENT_DATE_PART" | awk '{ print "20" substr($0, 5, 2) substr($0, 3, 2) substr($0, 1, 2) }')
+else
+  CURRENT_DATE=$(printf '%s\n' "$BUILT_AT" | cut -c 1-10 | tr -d '-')
+fi
+printf '%s\n' "$LATEST_DATE" | grep -Eq '^[0-9]{8}$' || fail "could not parse the latest Release date"
+printf '%s\n' "$CURRENT_DATE" | grep -Eq '^[0-9]{8}$' || fail "could not parse the installed build date"
 if [ "$LATEST_DATE" -lt "$CURRENT_DATE" ]; then
   printf 'The matching Release is older than this image; refusing to offer a downgrade.\n'
   exit 0
@@ -109,10 +107,11 @@ if [ "$MODE" = check ]; then
 fi
 
 WINDOWS_ROOT=$(printenv SYSTEMROOT 2>/dev/null || printenv SystemRoot 2>/dev/null || true)
-if [ -z "$WINDOWS_ROOT" ]; then
-  fail "could not read the Windows system directory"
+if [ -n "$WINDOWS_ROOT" ]; then
+  WINDOWS_ROOT_WSL=$(wslpath -u "$WINDOWS_ROOT") || fail "could not translate the Windows system directory"
+else
+  WINDOWS_ROOT_WSL=/mnt/c/Windows
 fi
-WINDOWS_ROOT_WSL=$(wslpath -u "$WINDOWS_ROOT") || fail "could not translate the Windows system directory"
 CMD_EXE="$WINDOWS_ROOT_WSL/System32/cmd.exe"
 WSL_EXE="$WINDOWS_ROOT_WSL/System32/wsl.exe"
 [ -f "$CMD_EXE" ] || fail "could not find Windows cmd.exe"
