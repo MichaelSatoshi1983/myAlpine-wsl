@@ -139,6 +139,10 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
+if [ "$ROLLBACK" -eq 1 ] && [ -z "$SOURCE_DISTRO" ]; then
+  [ -r /etc/wsl-migrate/previous-default ] || fail "no recorded previous default; specify one: wsl-migrate --rollback DISTRO"
+  SOURCE_DISTRO=$(cat /etc/wsl-migrate/previous-default)
+fi
 [ -n "$SOURCE_DISTRO" ] || { usage >&2; exit 2; }
 case "$SOURCE_DISTRO" in *[!A-Za-z0-9_.-]*|'') fail "distro names may contain only letters, digits, dot, underscore, and hyphen" ;; esac
 if [ -n "$NEW_DISTRO" ]; then
@@ -189,9 +193,6 @@ if distro_is_registered "$NEW_DISTRO"; then
   if [ "$RESUME" -eq 1 ]; then CLONE_IMPORTED=1
   else fail "new distro name is already registered in WSL: $NEW_DISTRO"; fi
 fi
-if [ "$RESUME" -eq 1 ] && [ "$CLONE_IMPORTED" -eq 0 ] && [ -e "$INSTALL_LOCATION" ]; then
-  fail "resume install path already exists but target is not registered; choose another --install-location and keep the partial data"
-fi
 SOURCE_WSL_VERSION=$(distro_wsl_version "$SOURCE_DISTRO")
 case "$SOURCE_WSL_VERSION" in 1|2) ;; *) fail "could not detect the source WSL version; no distro was stopped";; esac
 TARGET_WSL_VERSION=$SOURCE_WSL_VERSION
@@ -208,6 +209,9 @@ if [ -z "$INSTALL_LOCATION" ]; then
 fi
 case "$BACKUP_DIR" in /mnt/[A-Za-z]/*) ;; *) fail "backup directory must be on a mounted Windows drive, such as /mnt/c/Users/...";; esac
 case "$INSTALL_LOCATION" in /mnt/[A-Za-z]/*) ;; *) fail "install location must be on a mounted Windows drive, such as /mnt/c/Users/...";; esac
+if [ "$RESUME" -eq 1 ] && [ "$CLONE_IMPORTED" -eq 0 ] && [ -e "$INSTALL_LOCATION" ]; then
+  fail "resume install path already exists but target is not registered; choose another --install-location and keep the partial data"
+fi
 if [ "$RESUME" -eq 0 ]; then
   [ ! -e "$INSTALL_LOCATION" ] || fail "install location already exists; choose an empty, unused path: $INSTALL_LOCATION"
 fi
@@ -230,10 +234,15 @@ if [ "$RESUME" -eq 1 ]; then
   case "$BACKUP_FILE" in /mnt/[A-Za-z]/*) ;; *) fail "resume archive must be on a mounted Windows drive";; esac
   [ -s "$BACKUP_FILE" ] || fail "resume archive does not exist or is empty: $BACKUP_FILE"
   CONTENT_MANIFEST=$BACKUP_FILE.content-manifest
+  CHECKSUM_FILE=$BACKUP_FILE.sha256
   [ -s "$CONTENT_MANIFEST" ] || fail "source content manifest is missing; this archive cannot be resumed safely"
+  [ -r "$CHECKSUM_FILE" ] || fail "archive checksum file is missing; this archive cannot be resumed safely"
+  EXPORT_SHA256=$(awk 'NR==1 {print $1}' "$CHECKSUM_FILE")
+  [ "$(sha256sum "$BACKUP_FILE" | awk '{print $1}')" = "$EXPORT_SHA256" ] || fail "resume archive checksum does not match the saved checksum"
 else
   BACKUP_FILE=$BACKUP_DIR/$safe_name-$timestamp.tar
   CONTENT_MANIFEST=$BACKUP_FILE.content-manifest
+  CHECKSUM_FILE=$BACKUP_FILE.sha256
   [ ! -e "$BACKUP_FILE" ] || fail "backup file already exists: $BACKUP_FILE"
 fi
 WINDOWS_BACKUP=$(wslpath -w "$BACKUP_FILE")
@@ -364,12 +373,14 @@ if [ "$RESUME" -eq 0 ]; then
   printf 'Type YES to gracefully power off "%s" and begin export: ' "$SOURCE_DISTRO"
 else
   tar -tf "$BACKUP_FILE" >/dev/null 2>&1 || fail "resume archive is not a readable tar archive"
-  archive_kb=$(du -k "$BACKUP_FILE" | awk 'NR==1 {print $1}')
-  INSTALL_REQUIRED_KB=$(awk -v kb="$archive_kb" 'BEGIN {printf "%.0f", kb * 1.30 + 1048576}')
-  INSTALL_FREE_KB=$(df -Pk "$INSTALL_PARENT" | awk 'END {print $4}')
-  case "$INSTALL_FREE_KB" in *[!0-9]*|'') fail "could not read free space for the install drive";; esac
-  [ "$INSTALL_FREE_KB" -ge "$INSTALL_REQUIRED_KB" ] || fail "not enough install space to resume; need about $(awk -v kb="$INSTALL_REQUIRED_KB" 'BEGIN {printf "%.1f", kb/1048576}') GiB"
-  printf 'Type YES to import the existing export without stopping the source: '
+  if [ "$CLONE_IMPORTED" -eq 0 ]; then
+    archive_kb=$(du -k "$BACKUP_FILE" | awk 'NR==1 {print $1}')
+    INSTALL_REQUIRED_KB=$(awk -v kb="$archive_kb" 'BEGIN {printf "%.0f", kb * 1.30 + 1048576}')
+    INSTALL_FREE_KB=$(df -Pk "$INSTALL_PARENT" | awk 'END {print $4}')
+    case "$INSTALL_FREE_KB" in *[!0-9]*|'') fail "could not read free space for the install drive";; esac
+    [ "$INSTALL_FREE_KB" -ge "$INSTALL_REQUIRED_KB" ] || fail "not enough install space to resume; need about $(awk -v kb="$INSTALL_REQUIRED_KB" 'BEGIN {printf "%.1f", kb/1048576}') GiB"
+  fi
+  printf 'Type YES to import or verify the existing clone without stopping the source: '
 fi
 IFS= read -r answer || answer=
 case "$answer" in YES) ;; *) echo "Cancelled. No export or import was started."; exit 0 ;; esac
@@ -392,6 +403,8 @@ if [ "$RESUME" -eq 0 ]; then
   [ -s "$BACKUP_FILE" ] || fail "export did not create a non-empty backup"
   tar -tf "$BACKUP_FILE" >/dev/null 2>&1 || fail "export is not a readable tar archive"
   EXPORT_VALID=1
+  EXPORT_SHA256=$(sha256sum "$BACKUP_FILE" | awk '{print $1}')
+  printf '%s  %s\n' "$EXPORT_SHA256" "$(basename -- "$BACKUP_FILE")" > "$CHECKSUM_FILE"
 else
   [ -s "$BACKUP_FILE" ] || fail "resume archive is missing or empty"
   tar -tf "$BACKUP_FILE" >/dev/null 2>&1 || fail "resume archive is not a readable tar archive"
