@@ -111,37 +111,55 @@ fi
 
 cat <<EOF
 
-This operation creates a full clone. Review these differences and risks:
-  - The clone retains the source distro's OS, packages, /etc configuration,
-    user data, and Docker data. It does not become the current Release image.
-  - WSL imports the clone as WSL 2. A WSL 1 source can behave differently.
-  - WSL will not copy Windows-side .wslconfig, Windows Terminal profiles,
-    registration settings, or files stored outside the distro filesystem.
-  - The source /etc/wsl.conf is preserved. Boot commands or default-user
-    settings may need adjustment for the target Windows/WSL version.
-  - Running both copies can start duplicate services and Docker workloads,
-    bind the same ports, and expose the same container data. Run one at a time.
-  - A full export needs free Windows disk space roughly comparable to the
-    source distro. The export is retained as a recovery copy.
-  - The source must be stopped for a consistent export; unsaved process state
-    is lost when it is terminated.
+==================== Migration processing overview ====================
+Source distro: $SOURCE_DISTRO
+New cloned distro: $NEW_DISTRO
+Full export backup: $BACKUP_FILE
+New install location: $INSTALL_LOCATION
 
-Source: $SOURCE_DISTRO
-New clone: $NEW_DISTRO
-Export: $BACKUP_FILE
-Install location: $INSTALL_LOCATION
+Will be copied as a full distro clone:
+  - Alpine/system files, installed packages, users, home directories,
+    /etc configuration, and persistent Docker images/containers/volumes.
+  - The old distro's /etc/wsl.conf and default-user setting are preserved.
 
-Continue to the stop-source confirmation? [y/N] 
+Will not be copied:
+  - Windows-side .wslconfig, Windows Terminal profiles, WSL registration
+    settings, or files stored outside the distro filesystem.
+  - Running process state. The source distro is stopped before export.
+
+Actions after confirmation:
+  1. Stop "$SOURCE_DISTRO".
+  2. Export it to the retained tar backup shown above and validate the archive.
+  3. Import that archive as "$NEW_DISTRO" using WSL 2.
+  4. Install wsl-migrate as /usr/local/bin/wsl-migrate inside the clone.
+  5. Ask whether to set the clone as the default distro.
+
+Important risks and limitations:
+  - This preserves the old distro; it does not upgrade it to the current
+    Release image. A WSL 1 source becomes WSL 2 and may behave differently.
+  - Preserved boot commands or user settings may need adjustment for this
+    Windows/WSL version.
+  - Running both copies can start duplicate services or Docker workloads,
+    compete for ports, and operate on duplicated container data. Prefer
+    testing one copy at a time.
+  - The export can be large; ensure the Windows drive has enough free space.
+    The old distro stays registered and the export remains available for recovery.
+
+No changes have been made yet. Enter y to review the stop confirmation;
+anything else cancels.
+=======================================================================
+
+Proceed with this migration plan? [y/N] 
 EOF
 IFS= read -r answer || answer=
-case "$answer" in y|Y|yes|YES) ;; *) echo "Cancelled."; exit 0 ;; esac
+case "$answer" in y|Y|yes|YES) ;; *) echo "Cancelled. No distro was stopped or imported."; exit 0 ;; esac
 BACKUP_DIR=$(mkdir -p "$BACKUP_DIR" && CDPATH='' cd -- "$BACKUP_DIR" && pwd)
 BACKUP_FILE=$BACKUP_DIR/$safe_name-$timestamp.tar
 WINDOWS_BACKUP=$(wslpath -w "$BACKUP_FILE")
-printf 'Terminate "%s" now, then export its complete filesystem? This closes its WSL processes. [y/N] ' "$SOURCE_DISTRO"
+printf 'Final check: type YES to stop "%s" and begin the export/import. This closes its WSL processes: ' "$SOURCE_DISTRO"
 IFS= read -r answer || answer=
 case "$answer" in
-  y|Y|yes|YES) "$WSL_EXE" --terminate "$SOURCE_DISTRO" ;;
+  YES) "$WSL_EXE" --terminate "$SOURCE_DISTRO" ;;
   *) echo "Cancelled. The source was not terminated."; exit 0 ;;
 esac
 
