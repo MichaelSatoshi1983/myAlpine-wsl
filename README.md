@@ -32,6 +32,26 @@ The configured user belongs to the `docker` group so it can use Docker without `
 
 Container output logs use the `json-file` driver with rotation: each file is limited to 10 MB and up to three files are retained per container (roughly 30 MB per container). This controls container stdout/stderr logs, not image, volume, or Docker daemon log sizes. Edit `/etc/docker/daemon.json` to change the defaults. After changing the settings on an existing installation, restart Docker and recreate containers to apply the new defaults. Individual containers or Compose services can override them. The build validates the daemon configuration without starting Docker.
 
+## Migrate from an existing WSL distro
+
+The new image includes an interactive `wsl-migrate` command. It makes a full WSL export of the old distro, then imports it under a second name. The old distro stays registered, and the clone contains its persistent filesystem: Alpine version, installed packages, system configuration, users, home files, and Docker images, containers, and volumes.
+
+Start the new image and run the command there. Replace `Alpine` with the old distro name from `wsl -l -q` in PowerShell:
+
+```sh
+wsl-migrate --dry-run Alpine
+wsl-migrate Alpine
+```
+
+Before stopping the source, the script checks registration, names, install path, source WSL version, and the current default distro. It shows free space, then asks you to stop database and application workloads and type `READY`. It attempts to stop Docker, syncs the filesystem, measures the source size, and compares the required space for both the export and imported clone. When both paths use the same drive, it checks the combined requirement. The estimate includes 20% plus 1 GiB headroom for each copy. It preserves the source WSL version (1 or 2), asks whether to regenerate SSH host keys, and requires typing `YES` before requesting a graceful poweroff. If the source remains running, force termination requires a separate `FORCE` confirmation.
+
+The export is kept under `Documents/myAlpine-wsl-backups`; the clone is imported under `%LOCALAPPDATA%/AlpineWSL-<new-name>`. Use `--backup-dir` and `--install-location` to choose different paths on mounted Windows drives. The script retains a content manifest and SHA-256 checksum beside the archive. After import, it checks the WSL version, compares `/etc/passwd`, `/etc/group`, `/etc/wsl.conf` and other available key files with the export, hashes regular files and symlinks under `/home` and `/var/lib/docker`, compares file and directory permissions plus numeric owners there, and confirms the configured default user can run a command. Hashing those directories can take time. If content differs, the script shows a short diff and requires typing `CONTINUE` to keep the clone; it records the difference in the migration report.
+
+If import or verification fails after the export is validated, the source remains registered and the script prints a resume command. Run it with the saved archive and the same source and target names, for example `wsl-migrate --resume /mnt/c/Users/you/Documents/myAlpine-wsl-backups/Alpine-migrated-20261011.tar Alpine Alpine-migrated`. This reuses the archive without exporting the source again. If the destination path contains partial import data, choose a different `--install-location`; the script leaves that partial data in place. The previous default distro is recorded and the success message prints the exact rollback command. It never unregisters a distro or deletes the export.
+
+A full clone preserves the old environment; it does not upgrade the cloned Alpine packages or system files to the new Release image. Windows-side `.wslconfig`, Windows Terminal profiles, WSL registration settings, and files outside the distro filesystem are not included. The old `/etc/wsl.conf` and host identity files are copied. If both copies provide network services, they can share SSH host keys and machine identity; run one copy at a time or choose to regenerate SSH host keys in the clone. The old distro remains available; after making the clone default, run `wsl-migrate --rollback` inside the clone to restore the actual previous default recorded during migration.
+
+
 ## Build locally
 
 Build on an x86_64 Linux host with root privileges, `wget`, `tar`, and `mountpoint` installed. The build fetches the current Alpine stable minirootfs and writes `alpine-wsl.tar.gz` in the repository root.

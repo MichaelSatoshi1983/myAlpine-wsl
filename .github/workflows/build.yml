@@ -38,7 +38,8 @@ jobs:
           sh -n scripts/build.sh
           sh -n scripts/setup.sh
           sh -n scripts/wsl-start-docker.sh
-          shellcheck scripts/build.sh scripts/setup.sh scripts/wsl-start-docker.sh
+          sh -n scripts/wsl-migrate.sh
+          shellcheck scripts/build.sh scripts/setup.sh scripts/wsl-start-docker.sh scripts/wsl-migrate.sh
 
   build:
     name: Build root filesystem
@@ -93,6 +94,7 @@ jobs:
       - name: read and validate build metadata
         id: metadata
         run: |
+          tar -tzf alpine-wsl.tar.gz | grep -Fx './usr/local/bin/wsl-migrate'
           tar -xOf alpine-wsl.tar.gz ./etc/alpine-wsl-build > build-info.txt
           grep -Eq '^Alpine version: [0-9]+\.[0-9]+\.[0-9]+$' build-info.txt
           grep -Eq '^Source commit: [0-9a-f]{40}$' build-info.txt
