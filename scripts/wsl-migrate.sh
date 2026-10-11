@@ -308,23 +308,97 @@ case "$answer" in y|Y|yes|YES) ;; *) echo "Cancelled. No distro was stopped or i
 printf 'Regenerate SSH host keys in the clone after import? [y/N] '
 IFS= read -r answer || answer=
 case "$answer" in y|Y|yes|YES) REFRESH_SSH_KEYS=1 ;; *) REFRESH_SSH_KEYS=0 ;; esac
-printf 'Final check: type YES to stop "%s" and begin the export/import. This closes its WSL processes: ' "$SOURCE_DISTRO"
+if [ "$RESUME" -eq 0 ]; then
+  printf 'Stop app/database workloads in the source, then type READY to continue: '
+  IFS= read -r answer || answer=
+  [ "$answer" = READY ] || { echo "Cancelled. No source service was stopped."; exit 0; }
+  echo "Stopping Docker if configured, syncing, and measuring source size..."
+  # shellcheck disable=SC2016
+  PREP_OUTPUT=$("$WSL_EXE" --distribution "$SOURCE_DISTRO" --user root --exec sh -c '
+    if [ -x /etc/init.d/docker ] && command -v rc-service >/dev/null 2>&1; then
+      rc-service --nodeps --ifstarted docker stop || exit 20
+    elif command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet docker; then
+      systemctl stop docker || exit 21
+    fi
+    sync || exit 22
+    du -skx /
+  ' 2>/dev/null) || fail "could not stop Docker, sync the source, or measure its used space"
+  SOURCE_USED_KB=$(printf '%s\n' "$PREP_OUTPUT" | awk '$1 ~ /^[0-9]+$/ {used=$1} END {print used}' | tr -d '\r')
+  case "$SOURCE_USED_KB" in *[!0-9]*|'') fail "could not read the source root filesystem size";; esac
+  SOURCE_PREPARED=1
+  # shellcheck disable=SC2016
+  "$WSL_EXE" --distribution "$SOURCE_DISTRO" --user root --exec sh -c '
+    command -v sha256sum >/dev/null 2>&1 || exit 31
+    for root in /home /var/lib/docker; do
+      if [ -d "$root" ]; then
+        printf "DIR %s\n" "$root"
+        find "$root" -type f -exec sha256sum "{}" \;
+        find "$root" -type l -exec sh -c '\''for path do printf "LINK %s -> %s\n" "$path" "$(readlink "$path")"; done'\'' sh "{}" \;
+      else
+        printf "MISSING %s\n" "$root"
+      fi
+    done
+  ' > "$CONTENT_MANIFEST.raw" || fail "could not record source home and Docker file hashes"
+  tr -d '\r' < "$CONTENT_MANIFEST.raw" | LC_ALL=C sort > "$CONTENT_MANIFEST"
+  rm -f -- "$CONTENT_MANIFEST.raw"
+  BACKUP_DISK=$(df -Pk "$BACKUP_PARENT" | awk 'END {print $1 "|" $4}')
+  INSTALL_DISK=$(df -Pk "$INSTALL_PARENT" | awk 'END {print $1 "|" $4}')
+  BACKUP_FS=$(printf '%s\n' "$BACKUP_DISK" | awk -F'|' '{print $1}')
+  BACKUP_FREE_KB=$(printf '%s\n' "$BACKUP_DISK" | awk -F'|' '{print $2}')
+  INSTALL_FS=$(printf '%s\n' "$INSTALL_DISK" | awk -F'|' '{print $1}')
+  INSTALL_FREE_KB=$(printf '%s\n' "$INSTALL_DISK" | awk -F'|' '{print $2}')
+  case "$BACKUP_FREE_KB:$INSTALL_FREE_KB" in *[!0-9:]*|:*) fail "could not read free space for both drives";; esac
+  BACKUP_REQUIRED_KB=$(awk -v kb="$SOURCE_USED_KB" 'BEGIN {printf "%.0f", kb * 1.20 + 1048576}')
+  INSTALL_REQUIRED_KB=$BACKUP_REQUIRED_KB
+  if [ "$BACKUP_FS" = "$INSTALL_FS" ]; then
+    TOTAL_REQUIRED_KB=$((BACKUP_REQUIRED_KB + INSTALL_REQUIRED_KB))
+    [ "$BACKUP_FREE_KB" -ge "$TOTAL_REQUIRED_KB" ] || fail "not enough space on the shared backup/install drive; need about $(awk -v kb="$TOTAL_REQUIRED_KB" 'BEGIN {printf "%.1f", kb/1048576}') GiB"
+  else
+    [ "$BACKUP_FREE_KB" -ge "$BACKUP_REQUIRED_KB" ] || fail "not enough backup space; need about $(awk -v kb="$BACKUP_REQUIRED_KB" 'BEGIN {printf "%.1f", kb/1048576}') GiB"
+    [ "$INSTALL_FREE_KB" -ge "$INSTALL_REQUIRED_KB" ] || fail "not enough install space; need about $(awk -v kb="$INSTALL_REQUIRED_KB" 'BEGIN {printf "%.1f", kb/1048576}') GiB"
+  fi
+  echo "Source used: $(awk -v kb="$SOURCE_USED_KB" 'BEGIN {printf "%.1f", kb/1048576}') GiB; estimates include 20% plus 1 GiB headroom per copy."
+  printf 'Type YES to gracefully power off "%s" and begin export: ' "$SOURCE_DISTRO"
+else
+  tar -tf "$BACKUP_FILE" >/dev/null 2>&1 || fail "resume archive is not a readable tar archive"
+  archive_kb=$(du -k "$BACKUP_FILE" | awk 'NR==1 {print $1}')
+  INSTALL_REQUIRED_KB=$(awk -v kb="$archive_kb" 'BEGIN {printf "%.0f", kb * 1.30 + 1048576}')
+  INSTALL_FREE_KB=$(df -Pk "$INSTALL_PARENT" | awk 'END {print $4}')
+  case "$INSTALL_FREE_KB" in *[!0-9]*|'') fail "could not read free space for the install drive";; esac
+  [ "$INSTALL_FREE_KB" -ge "$INSTALL_REQUIRED_KB" ] || fail "not enough install space to resume; need about $(awk -v kb="$INSTALL_REQUIRED_KB" 'BEGIN {printf "%.1f", kb/1048576}') GiB"
+  printf 'Type YES to import the existing export without stopping the source: '
+fi
 IFS= read -r answer || answer=
-case "$answer" in YES) ;; *) echo "Cancelled. The source was not terminated."; exit 0 ;; esac
+case "$answer" in YES) ;; *) echo "Cancelled. No export or import was started."; exit 0 ;; esac
 BACKUP_DIR=$(mkdir -p "$BACKUP_DIR" && CDPATH='' cd -- "$BACKUP_DIR" && pwd)
-BACKUP_FILE=$BACKUP_DIR/$safe_name-$timestamp.tar
-WINDOWS_BACKUP=$(wslpath -w "$BACKUP_FILE")
-SOURCE_STOPPED=1
-"$WSL_EXE" --terminate "$SOURCE_DISTRO"
-
-echo "Exporting full distro to $BACKUP_FILE"
-"$WSL_EXE" --export "$SOURCE_DISTRO" "$WINDOWS_BACKUP"
-[ -s "$BACKUP_FILE" ] || fail "export did not create a non-empty backup"
-tar -tf "$BACKUP_FILE" >/dev/null 2>&1 || fail "export is not a readable tar archive"
-EXPORT_VALID=1
-echo "Importing $NEW_DISTRO as WSL $TARGET_WSL_VERSION"
-"$WSL_EXE" --import "$NEW_DISTRO" "$WINDOWS_INSTALL_LOCATION" "$WINDOWS_BACKUP" --version "$TARGET_WSL_VERSION"
-CLONE_IMPORTED=1
+if [ "$RESUME" -eq 0 ]; then
+  SOURCE_STOP_ATTEMPTED=1
+  # shellcheck disable=SC2016
+  "$WSL_EXE" --distribution "$SOURCE_DISTRO" --user root --exec poweroff >/dev/null 2>&1 || :
+  load_distro_list || fail "could not check whether the source stopped"
+  if distro_is_running "$SOURCE_DISTRO"; then
+    printf 'The source is still running. Type FORCE to terminate it; this can interrupt remaining processes: '
+    IFS= read -r answer || answer=
+    case "$answer" in FORCE) "$WSL_EXE" --terminate "$SOURCE_DISTRO" || fail "could not terminate the source" ;; *) fail "graceful shutdown did not stop the source; export was not started" ;; esac
+  fi
+  SOURCE_STOPPED=1
+  load_distro_list || fail "could not refresh WSL distro state"
+  distro_is_running "$SOURCE_DISTRO" && fail "source still appears to be running"
+  echo "Exporting full distro to $BACKUP_FILE"
+  "$WSL_EXE" --export "$SOURCE_DISTRO" "$WINDOWS_BACKUP"
+  [ -s "$BACKUP_FILE" ] || fail "export did not create a non-empty backup"
+  tar -tf "$BACKUP_FILE" >/dev/null 2>&1 || fail "export is not a readable tar archive"
+  EXPORT_VALID=1
+else
+  [ -s "$BACKUP_FILE" ] || fail "resume archive is missing or empty"
+  tar -tf "$BACKUP_FILE" >/dev/null 2>&1 || fail "resume archive is not a readable tar archive"
+  EXPORT_VALID=1
+fi
+if [ "$CLONE_IMPORTED" -eq 0 ]; then
+  echo "Importing $NEW_DISTRO as WSL $TARGET_WSL_VERSION"
+  "$WSL_EXE" --import "$NEW_DISTRO" "$WINDOWS_INSTALL_LOCATION" "$WINDOWS_BACKUP" --version "$TARGET_WSL_VERSION" || fail "WSL import failed; resume from the retained export"
+  CLONE_IMPORTED=1
+fi
 
 echo "Installing wsl-migrate inside the clone"
 SCRIPT_PATH=$0
