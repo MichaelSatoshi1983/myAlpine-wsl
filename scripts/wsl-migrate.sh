@@ -360,6 +360,7 @@ Will migrate: APK package list, compatible users/groups, /home, /root, /opt,
 Will merge: non-system /etc configuration; differing files require OLD or NEW choice.
 Will retain: complete old distro export, old /etc snapshot, and target snapshot.
 Will keep new: package database, WSL boot/network settings, OS files and machine identity.
+APK, OpenRC, DBus, and miscellaneous system runtime state is kept from the new Release.
 Docker data is copied while stopped; Docker/kernel changes may prevent containers starting.
 The old distro remains registered and its data is not deleted.
 Backup: $BACKUP_FILE
@@ -484,6 +485,11 @@ if [ -s "$WORLD_FILE" ]; then
 fi
 echo "Restoring compatible user accounts and groups..."
 restore_source_accounts
+SOURCE_ROOT_HASH=$(awk -F: '$1=="root" {print $2; exit}' "$SOURCE_ETC/shadow" 2>/dev/null || :)
+TARGET_ROOT_HASH=$(awk -F: '$1=="root" {print $2; exit}' /etc/shadow 2>/dev/null || :)
+if [ -n "$SOURCE_ROOT_HASH" ] && [ "$SOURCE_ROOT_HASH" != "$TARGET_ROOT_HASH" ]; then
+  warn "Root password settings were kept from the new Release; the old entry remains in the source export."
+fi
 if [ -s "$WARNINGS" ]; then
   echo "Some users, groups, or packages need manual review; details are listed above and in $WARNINGS."
   printf 'Type CONTINUE to proceed with data migration: '
