@@ -99,7 +99,8 @@ migration_exit() {
   if [ -n "$BACKUP_FILE" ] && [ -f "$BACKUP_FILE" ]; then
     if [ "$EXPORT_VALID" -eq 1 ]; then
       echo "Validated export or recovery copy: $BACKUP_FILE" >&2
-      echo "Continue from this export with: wsl-migrate --resume \"$BACKUP_FILE\" $SOURCE_DISTRO $NEW_DISTRO" >&2
+      echo "Continue from this export with: wsl-migrate --resume \"$BACKUP_FILE\" --install-location \"$INSTALL_LOCATION\" $SOURCE_DISTRO $NEW_DISTRO" >&2
+      echo "If the install path contains partial data but the distro is not registered, choose a new --install-location." >&2
     else
       echo "A partial or unvalidated export may exist at: $BACKUP_FILE" >&2
     fi
@@ -331,6 +332,7 @@ if [ "$RESUME" -eq 0 ]; then
   IFS= read -r answer || answer=
   [ "$answer" = READY ] || { echo "Cancelled. No source service was stopped."; exit 0; }
   echo "Stopping Docker if configured, syncing, and measuring source size..."
+  SOURCE_PREPARED=1
   # shellcheck disable=SC2016
   PREP_OUTPUT=$("$WSL_EXE" --distribution "$SOURCE_DISTRO" --user root --exec sh -c '
     if [ -x /etc/init.d/docker ] && command -v rc-service >/dev/null 2>&1; then
@@ -343,7 +345,6 @@ if [ "$RESUME" -eq 0 ]; then
   ' 2>/dev/null) || fail "could not stop Docker, sync the source, or measure its used space"
   SOURCE_USED_KB=$(printf '%s\n' "$PREP_OUTPUT" | awk '$1 ~ /^[0-9]+$/ {used=$1} END {print used}' | tr -d '\r')
   case "$SOURCE_USED_KB" in *[!0-9]*|'') fail "could not read the source root filesystem size";; esac
-  SOURCE_PREPARED=1
   # shellcheck disable=SC2016
   "$WSL_EXE" --distribution "$SOURCE_DISTRO" --user root --exec sh -c '
     command -v sha256sum >/dev/null 2>&1 || exit 31
