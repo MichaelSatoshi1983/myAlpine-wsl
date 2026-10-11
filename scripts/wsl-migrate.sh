@@ -21,6 +21,13 @@ UTILITY_INSTALLED=0
 MIGRATION_COMPLETE=0
 BACKUP_FILE=
 SCRIPT_PATH=
+SOURCE_PREPARED=0
+SOURCE_STOP_ATTEMPTED=0
+SOURCE_STOPPED=0
+CLONE_IMPORTED=0
+CONTENT_MANIFEST=
+PREVIOUS_DEFAULT=
+SOURCE_USED_KB=
 
 load_distro_list() {
   if ! DISTRO_LIST=$("$WSL_EXE" --list --verbose 2>/dev/null); then
@@ -37,6 +44,22 @@ distro_is_registered() {
       if (name == "*") name = $2
       sub(/^\*/, "", name)
       if (name == wanted) found = 1
+    }
+    END { exit found ? 0 : 1 }
+  '
+}
+
+default_distro() {
+  printf '%s\n' "$DISTRO_LIST" | awk '$1 == "*" {print $2; exit}'
+}
+
+distro_is_running() {
+  printf '%s\n' "$DISTRO_LIST" | awk -v wanted="$1" '
+    {
+      if ($1 == "*") { name = $2; state = $3 }
+      else { name = $1; state = $2 }
+      sub(/^\*/, "", name)
+      if (name == wanted && state == "Running") found = 1
     }
     END { exit found ? 0 : 1 }
   '
@@ -87,6 +110,8 @@ trap migration_exit EXIT
 
 DRY_RUN=0
 ROLLBACK=0
+RESUME=0
+RESUME_ARCHIVE=
 BACKUP_DIR=
 INSTALL_LOCATION=
 SOURCE_DISTRO=
@@ -94,6 +119,7 @@ NEW_DISTRO=
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --dry-run) DRY_RUN=1; shift ;;
+    --resume) [ "$#" -ge 2 ] || fail "--resume requires a backup tar path"; RESUME=1; RESUME_ARCHIVE=$2; shift 2 ;;
     --rollback) ROLLBACK=1; shift ;;
     --backup-dir) [ "$#" -ge 2 ] || fail "--backup-dir requires a Windows-mounted path"; BACKUP_DIR=$2; shift 2 ;;
     --install-location) [ "$#" -ge 2 ] || fail "--install-location requires a Windows-mounted path"; INSTALL_LOCATION=$2; shift 2 ;;
@@ -159,6 +185,8 @@ fi
 SOURCE_WSL_VERSION=$(distro_wsl_version "$SOURCE_DISTRO")
 case "$SOURCE_WSL_VERSION" in 1|2) ;; *) fail "could not detect the source WSL version; no distro was stopped";; esac
 TARGET_WSL_VERSION=$SOURCE_WSL_VERSION
+PREVIOUS_DEFAULT=$(default_distro)
+[ -n "$PREVIOUS_DEFAULT" ] || fail "could not detect the current default WSL distro"
 command -v sha256sum >/dev/null 2>&1 || fail "sha256sum is required to record the export checksum"
 
 safe_name=$(printf '%s' "$NEW_DISTRO" | tr -c 'A-Za-z0-9_.-' '_')
@@ -185,9 +213,18 @@ AVAILABLE_KB=$(df -Pk "$BACKUP_PARENT" 2>/dev/null | awk 'END {print $4}')
 case "$AVAILABLE_KB" in *[!0-9]*|'') AVAILABLE_GB=unknown ;; *) AVAILABLE_GB=$(awk -v kb="$AVAILABLE_KB" 'BEGIN {printf "%.1f", kb / 1048576}') ;; esac
 WINDOWS_INSTALL_LOCATION=$(wslpath -w "$INSTALL_LOCATION")
 timestamp=$(date -u +%Y%m%dT%H%M%SZ)
-BACKUP_FILE=$BACKUP_DIR/$safe_name-$timestamp.tar
+if [ "$RESUME" -eq 1 ]; then
+  BACKUP_FILE=$RESUME_ARCHIVE
+  case "$BACKUP_FILE" in /mnt/[A-Za-z]/*) ;; *) fail "resume archive must be on a mounted Windows drive";; esac
+  [ -s "$BACKUP_FILE" ] || fail "resume archive does not exist or is empty: $BACKUP_FILE"
+  CONTENT_MANIFEST=$BACKUP_FILE.content-manifest
+  [ -s "$CONTENT_MANIFEST" ] || fail "source content manifest is missing; this archive cannot be resumed safely"
+else
+  BACKUP_FILE=$BACKUP_DIR/$safe_name-$timestamp.tar
+  CONTENT_MANIFEST=$BACKUP_FILE.content-manifest
+  [ ! -e "$BACKUP_FILE" ] || fail "backup file already exists: $BACKUP_FILE"
+fi
 WINDOWS_BACKUP=$(wslpath -w "$BACKUP_FILE")
-[ ! -e "$BACKUP_FILE" ] || fail "backup file already exists: $BACKUP_FILE"
 
 if [ "$DRY_RUN" -eq 1 ]; then
   cat <<EOF
