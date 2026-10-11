@@ -351,6 +351,8 @@ if [ "$RESUME" -eq 0 ]; then
       if [ -d "$root" ]; then
         printf "DIR %s\n" "$root"
         find "$root" -type f -exec sha256sum "{}" \;
+        find "$root" -type f -exec stat -c "FILEMETA %a %u %g %n" "{}" \;
+        find "$root" -type d -exec stat -c "DIRMETA %a %u %g %n" "{}" \;
         find "$root" -type l -exec sh -c '\''for path do printf "LINK %s -> %s\n" "$path" "$(readlink "$path")"; done'\'' sh "{}" \;
       else
         printf "MISSING %s\n" "$root"
@@ -459,7 +461,7 @@ verify_archive_file etc/wsl.conf 1
 verify_archive_file etc/shadow 0
 verify_archive_file etc/docker/daemon.json 0
 
-echo "Comparing /home and Docker persistent file contents with the source manifest"
+echo "Comparing /home and Docker content, permissions, and ownership with the source manifest"
 # shellcheck disable=SC2016
 "$WSL_EXE" --distribution "$NEW_DISTRO" --user root --exec sh -c '
   if [ -x /etc/init.d/docker ] && command -v rc-service >/dev/null 2>&1; then
@@ -472,6 +474,8 @@ echo "Comparing /home and Docker persistent file contents with the source manife
     if [ -d "$root" ]; then
       printf "DIR %s\n" "$root"
       find "$root" -type f -exec sha256sum "{}" \;
+      find "$root" -type f -exec stat -c "FILEMETA %a %u %g %n" "{}" \;
+      find "$root" -type d -exec stat -c "DIRMETA %a %u %g %n" "{}" \;
       find "$root" -type l -exec sh -c '\''for path do printf "LINK %s -> %s\n" "$path" "$(readlink "$path")"; done'\'' sh "{}" \;
     else
       printf "MISSING %s\n" "$root"
@@ -550,7 +554,7 @@ echo "The export checksum is retained at: $CHECKSUM_FILE"
 if [ "$CONTENT_DIFFERENCES" -eq 1 ]; then
   echo "Home/Docker differences were reviewed and recorded in the report."
 else
-  echo "Regular file contents under /home and /var/lib/docker match the source manifest."
+  echo "Home/Docker contents, permissions, ownership, and symlink targets match the source manifest."
 fi
 echo "SSH host keys regenerated: $REFRESH_SSH_KEYS"
 echo "Start the clone with: wsl.exe --distribution $NEW_DISTRO"
