@@ -56,6 +56,35 @@ Custom executables and libraries under `/usr/local`, `/opt`, and migrated applic
 If a run stops after creating the export, resume without exporting again: `sudo -E wsl-migrate --resume /mnt/c/Users/you/Documents/myAlpine-wsl-backups/Alpine-20261011T080000Z.tar Alpine`. The old distro remains registered throughout; no distro or backup is automatically deleted. To restore the previous WSL default, run `wsl-migrate --rollback` inside the new distro. The old distro and complete export remain available for recovery.
 
 
+
+## Check for release updates
+
+New images include the `wsl-update` command. Run it inside the distro you want to migrate from:
+
+```sh
+wsl-update
+```
+
+The command checks for the newest published Release matching the image's Windows target and x64 architecture. It downloads the archive, verifies the SHA-256 checksum and embedded build metadata, then offers three choices:
+
+- **Automatic** imports the new image side by side under a Release-tagged WSL name in `%LOCALAPPDATA%\\AlpineWSL\\releases`, then starts the existing interactive `wsl-migrate` flow from the distro where `wsl-update` was run.
+- **Manual** keeps the verified archive under `Documents\\myAlpine-wsl-updates` and prints the PowerShell import and migration commands.
+- **Skip** leaves the verified download in place without importing it.
+
+The migration still shows its overview and asks before changing data. The old distro remains registered. The updater never unregisters it or deletes its data.
+
+Use these options to control the check:
+
+```sh
+wsl-update --check   # check only; do not download
+wsl-update --auto    # download, import side by side, and start migration
+wsl-update --manual  # download and print the PowerShell steps
+```
+
+Release tags use `Alpine_DDMMYY_win10x64_<12-character-commit>` or `Alpine_DDMMYY_win11x64_<12-character-commit>`. The date is UTC. Each updater only offers Releases matching the Windows target recorded in its image, so a Windows 10 image will not offer a Windows 11 build.
+
+Images published before the updater was added do not contain `wsl-update`. To start using it, manually import the first Release built with this updater as a second distro and run `wsl-migrate` there; subsequent releases can be checked from inside that distro.
+
 ## Build locally
 
 Build on an x86_64 Linux host with root privileges, `wget`, `tar`, and `mountpoint` installed. The build fetches the current Alpine stable minirootfs and writes `alpine-wsl.tar.gz` in the repository root.
@@ -112,7 +141,7 @@ Oh My Zsh is installed at a pinned commit during the build. Automatic updates ar
 
 ## Build metadata and releases
 
-`/etc/alpine-wsl-build` inside the image records the Alpine version, source commit, Windows target, and UTC build time. GitHub Actions validates shell syntax, the packaged metadata, and the target's WSL configuration. It uploads each successful build as an Actions artifact, but creates a GitHub Release only when there is no existing release for that Alpine version, source commit, and Windows target. Release tags end with `windows10` or `windows11` so the two configurations have separate downloads. Daily scheduled builds therefore do not create repeated releases for unchanged inputs.
+`/etc/alpine-wsl-build` inside the image records the Alpine version, source commit, Windows target, Release tag, and UTC build time. GitHub Actions validates shell syntax, the packaged metadata, the updater command, and the target's WSL configuration. It uploads each successful build as an Actions artifact and publishes the root filesystem plus its SHA-256 file. Release tags follow `Alpine_DDMMYY_win10x64_<12-character-commit>` or `Alpine_DDMMYY_win11x64_<12-character-commit>`; the date is UTC. Scheduled builds publish a dated Release for the selected Windows target.
 
 The startup helper uses OpenRC (`rc-service --nodeps --ifnotstarted docker start`); Alpine's default service manager is OpenRC. WSL provides the network, devices, and mounts, so the helper skips the normal OpenRC boot dependencies. Docker Engine requires WSL 2 and working kernel support for containers. The Windows host's WSL kernel configuration can limit Docker features.
 
