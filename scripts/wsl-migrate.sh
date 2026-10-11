@@ -52,7 +52,7 @@ distro_is_registered() {
 }
 
 default_distro() {
-  printf '%s\n' "$DISTRO_LIST" | awk '$1 == "*" {print $2; exit}'
+  printf '%s\n' "$DISTRO_LIST" | awk '$1 == "*" {print $2; exit} $1 ~ /^\*/ {sub(/^\*/, "", $1); print $1; exit}'
 }
 
 distro_is_running() {
@@ -139,10 +139,6 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-if [ "$ROLLBACK" -eq 1 ] && [ -z "$SOURCE_DISTRO" ]; then
-  [ -r /etc/wsl-migrate/previous-default ] || fail "no recorded previous default; specify one: wsl-migrate --rollback DISTRO"
-  SOURCE_DISTRO=$(cat /etc/wsl-migrate/previous-default)
-fi
 if [ "$ROLLBACK" -eq 1 ] && [ -z "$SOURCE_DISTRO" ]; then
   [ -r /etc/wsl-migrate/previous-default ] || fail "no recorded previous default; specify one: wsl-migrate --rollback DISTRO"
   SOURCE_DISTRO=$(cat /etc/wsl-migrate/previous-default)
