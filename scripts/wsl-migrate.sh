@@ -40,11 +40,11 @@ if [ -n "$NEW_DISTRO" ]; then
   case "$NEW_DISTRO" in *[!A-Za-z0-9_.-]*|'') fail "distro names may contain only letters, digits, dot, underscore, and hyphen" ;; esac
 fi
 
-CURRENT_DISTRO=\${WSL_DISTRO_NAME-}
+CURRENT_DISTRO=${WSL_DISTRO_NAME-}
 [ -n "$CURRENT_DISTRO" ] || fail "run this command inside the new WSL distro"
 [ "$SOURCE_DISTRO" != "$CURRENT_DISTRO" ] || fail "source and current distro are the same"
 
-WSL_EXE=\${WSL_EXE-}
+WSL_EXE=${WSL_EXE-}
 if [ -z "$WSL_EXE" ]; then
   for candidate in /mnt/c/Windows/System32/wsl.exe /mnt/c/WINDOWS/System32/wsl.exe; do
     if [ -x "$candidate" ]; then WSL_EXE=$candidate; break; fi
@@ -62,7 +62,7 @@ WINDOWS_LOCALAPPDATA=$("$CMD_EXE" /d /c echo %LOCALAPPDATA% | tr -d '\r')
 if [ "$ROLLBACK" -eq 1 ]; then
   [ -z "$NEW_DISTRO" ] || fail "--rollback accepts one distro name"
   [ "$DRY_RUN" -eq 0 ] || fail "--dry-run cannot be combined with --rollback"
-  [ -z "$BACKUP_DIR" ] && [ -z "$INSTALL_LOCATION" ] || fail "path options cannot be combined with --rollback"
+  if [ -n "$BACKUP_DIR" ] || [ -n "$INSTALL_LOCATION" ]; then fail "path options cannot be combined with --rollback"; fi
   "$WSL_EXE" --set-default "$SOURCE_DISTRO"
   echo "Default WSL distro set to $SOURCE_DISTRO. No distro data was changed."
   exit 0
@@ -156,8 +156,8 @@ echo "Installing wsl-migrate inside the clone"
 SCRIPT_PATH=$0
 case "$SCRIPT_PATH" in */*) ;; *) SCRIPT_PATH=$(command -v "$SCRIPT_PATH") ;; esac
 [ -f "$SCRIPT_PATH" ] || fail "cannot locate the running script to install it in the clone"
-if ! cat "$SCRIPT_PATH" | "$WSL_EXE" --distribution "$NEW_DISTRO" --user root --exec sh -c \
-  'umask 022; cat > /usr/local/bin/wsl-migrate && chmod 0755 /usr/local/bin/wsl-migrate'; then
+if ! "$WSL_EXE" --distribution "$NEW_DISTRO" --user root --exec sh -c \
+  'umask 022; cat > /usr/local/bin/wsl-migrate && chmod 0755 /usr/local/bin/wsl-migrate' < "$SCRIPT_PATH"; then
   cat >&2 <<EOF
 The full clone was imported, but wsl-migrate could not be installed inside it.
 The clone and retained export are still available:
