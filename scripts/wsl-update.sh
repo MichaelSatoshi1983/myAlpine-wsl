@@ -145,7 +145,6 @@ DOWNLOAD_DIR_WIN=$(printf '%s\\Documents\\myAlpine-wsl-updates\\%s' "$USERPROFIL
 INSTALL_DIR_WIN=$(printf '%s\\AlpineWSL\\releases\\%s' "$LOCALAPPDATA_WIN" "$LATEST_TAG")
 ARCHIVE_WIN=$(printf '%s\\%s' "$DOWNLOAD_DIR_WIN" "$ASSET_NAME")
 DOWNLOAD_DIR=$(wslpath -u "$DOWNLOAD_DIR_WIN") || fail "could not translate the download directory"
-INSTALL_DIR=$(wslpath -u "$INSTALL_DIR_WIN") || fail "could not translate the install directory"
 mkdir -p "$DOWNLOAD_DIR"
 
 ASSET_URL="https://github.com/$REPOSITORY/releases/download/$LATEST_TAG/$ASSET_NAME"
