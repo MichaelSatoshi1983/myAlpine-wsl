@@ -450,7 +450,13 @@ if [ -s "$WORLD_FILE" ]; then
   apk update > "$STATE_DIR/apk-update.log" 2>&1 || { warn "Could not refresh APK indexes."; PACKAGE_WARNING=1; }
   : > "$STATE_DIR/apk-world-safe"
   while IFS= read -r package; do
-    case "$package" in ''|\#*) continue ;; *[!A-Za-z0-9+._:@<>~=,-]*) warn "Skipped unsupported APK entry: $package"; PACKAGE_WARNING=1 ;; *) printf '%s\n' "$package" >> "$STATE_DIR/apk-world-safe" ;; esac
+    case "$package" in ''|\#*) continue ;; esac
+    if ! printf '%s\n' "$package" | grep -Eq '^[A-Za-z0-9+._:@<>~=,-]+$'; then
+      warn "Skipped unsupported APK entry: $package"
+      PACKAGE_WARNING=1
+    else
+      printf '%s\n' "$package" >> "$STATE_DIR/apk-world-safe"
+    fi
   done < "$WORLD_FILE"
   set --
   while IFS= read -r package; do [ -n "$package" ] && set -- "$@" "$package"; done < "$STATE_DIR/apk-world-safe"
