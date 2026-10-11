@@ -295,6 +295,7 @@ IMPORTED_WSL_VERSION=$(distro_wsl_version "$NEW_DISTRO")
 [ "$IMPORTED_WSL_VERSION" = "$TARGET_WSL_VERSION" ] || fail "imported distro WSL version did not match the source"
 
 if [ "$REFRESH_SSH_KEYS" -eq 1 ]; then
+  # shellcheck disable=SC2016
   "$WSL_EXE" --distribution "$NEW_DISTRO" --user root --exec sh -c '
     command -v ssh-keygen >/dev/null 2>&1 || {
       echo "ssh-keygen is not installed; SSH host keys were not changed." >&2
