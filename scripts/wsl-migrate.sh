@@ -144,6 +144,10 @@ if [ "$ROLLBACK" -eq 1 ] && [ -z "$SOURCE_DISTRO" ]; then
   [ -r /etc/wsl-migrate/previous-default ] || fail "no recorded previous default; specify one: wsl-migrate --rollback DISTRO"
   SOURCE_DISTRO=$(cat /etc/wsl-migrate/previous-default)
 fi
+if [ "$ROLLBACK" -eq 1 ] && [ -z "$SOURCE_DISTRO" ]; then
+  [ -r /etc/wsl-migrate/previous-default ] || fail "no recorded previous default; specify one: wsl-migrate --rollback DISTRO"
+  SOURCE_DISTRO=$(cat /etc/wsl-migrate/previous-default)
+fi
 [ -n "$SOURCE_DISTRO" ] || { usage >&2; exit 2; }
 case "$SOURCE_DISTRO" in *[!A-Za-z0-9_.-]*|'') fail "distro names may contain only letters, digits, dot, underscore, and hyphen" ;; esac
 if [ -n "$NEW_DISTRO" ]; then
