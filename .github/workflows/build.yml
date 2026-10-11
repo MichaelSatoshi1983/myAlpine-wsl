@@ -38,7 +38,8 @@ jobs:
           sh -n scripts/build.sh
           sh -n scripts/setup.sh
           sh -n scripts/wsl-start-docker.sh
-          shellcheck scripts/build.sh scripts/setup.sh scripts/wsl-start-docker.sh
+          sh -n scripts/wsl-migrate.sh
+          shellcheck scripts/build.sh scripts/setup.sh scripts/wsl-start-docker.sh scripts/wsl-migrate.sh
 
   build:
     name: Build root filesystem
