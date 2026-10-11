@@ -264,8 +264,6 @@ Target distro: $CURRENT_DISTRO
 Target user: $TARGET_USER
 Full source export: $BACKUP_FILE
 
-printf '%s\n' "$SOURCE_DISTRO" > "$REPORT_DIR/source-distro"
-
 Home files were copied. Existing target files replaced during the copy are
 saved in $TARGET_HOME/.wsl-migration-conflicts/$timestamp.
 The release-managed .zshrc, .zshenv, and Oh My Zsh installation were kept.
@@ -277,6 +275,7 @@ System configuration, custom software outside the home directory, and Docker
 images, containers, and volumes were not copied. The source distro was not
 unregistered.
 EOF
+printf '%s\n' "$SOURCE_DISTRO" > "$REPORT_DIR/source-distro"
 
 echo "Migration complete."
 echo "Full backup: $BACKUP_FILE"
