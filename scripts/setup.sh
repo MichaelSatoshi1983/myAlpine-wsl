@@ -38,7 +38,6 @@ apk add \
   tmux \
   htop \
   ripgrep \
-  rsync \
   fd \
   tree \
   less \
