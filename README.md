@@ -34,20 +34,26 @@ Container output logs use the `json-file` driver with rotation: each file is lim
 
 ## Migrate from an existing WSL distro
 
-The new image includes the `wsl-migrate` command. Run it from the new distro to copy a previous Alpine WSL user's home files and reinstall packages listed in the old distro's `/etc/apk/world`:
+The new image includes an interactive `wsl-migrate` command. It makes a full WSL export of the old distro, then imports that export under a second name. The old distro stays registered, and the clone contains the old distro's persistent filesystem: Alpine version, installed packages, system configuration, users, home files, and Docker images, containers, and volumes.
+
+Start the new image and run the command there. Replace `Alpine` with the old distro name from `wsl -l -q` in PowerShell:
 
 ```sh
 wsl-migrate --dry-run Alpine
 wsl-migrate Alpine
 ```
 
-Replace `Alpine` with the old distro name shown by `wsl -l -q` in PowerShell. Close programs in the old distro before migrating. The command asks before exporting and keeps a full WSL export under `Documents\\myAlpine-wsl-backups` by default. The source distro stays registered. Check free disk space first; the export can be large.
+The script proposes `Alpine-migrated` as the new name and asks before stopping the old distro. It retains a full export under `Documents/myAlpine-wsl-backups` and imports the clone as WSL 2 under `%LOCALAPPDATA%/AlpineWSL-<new-name>`. Use `--backup-dir` and `--install-location` to choose different paths on mounted Windows drives. It also offers to make the clone the default after import; it never unregisters either distro or deletes the export. To restore the prior default later, run `wsl-migrate --rollback Alpine`.
 
-After checking the new distro, you can switch the default from PowerShell with `wsl --set-default Alpine-Next`. The command can do this at the end of a migration with `wsl-migrate --switch-default Alpine`. To switch the default back from inside the new distro, run `wsl-migrate --rollback Alpine`.
+A full clone preserves the old environment; it does not upgrade the cloned Alpine packages or system files to the new Release image. The script warns and asks before continuing because:
 
-The command copies home files into the new default user's home, keeping the new image's `.zshrc`, `.zshenv`, and Oh My Zsh installation. The old Zsh files are saved in the migration report for review. Existing target files replaced by the copy are saved under `~/.wsl-migration-conflicts/`. Packages that cannot be installed are listed in the report.
+- a WSL 1 source will be imported as WSL 2, which can change behavior;
+- Windows-side `.wslconfig`, Windows Terminal profiles, WSL registration settings, and files outside the distro filesystem are not included;
+- the old `/etc/wsl.conf` is kept verbatim, so boot commands and default-user settings may need review;
+- running both copies can start duplicate services and Docker workloads, contend for ports, or access the same cloned container data;
+- the source is terminated before export so filesystem and Docker data are captured consistently; unsaved process state is lost.
 
-System configuration under `/etc`, software installed outside the home directory, and Docker images, containers, and volumes are not migrated automatically. Review those separately before switching your daily work to the new distro. Keep the old distro and export until the migration is verified.
+The full export is kept as a recovery copy. Check that Windows has enough free disk space before starting. After import, test the clone before making it your default. The script itself is added to the clone as `/usr/local/bin/wsl-migrate`.
 
 ## Build locally
 
