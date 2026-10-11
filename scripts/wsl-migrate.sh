@@ -408,7 +408,7 @@ SCRIPT_PATH=$0
 case "$SCRIPT_PATH" in */*) ;; *) SCRIPT_PATH=$(command -v "$SCRIPT_PATH") ;; esac
 [ -f "$SCRIPT_PATH" ] || fail "cannot locate the running script to install it in the clone"
 "$WSL_EXE" --distribution "$NEW_DISTRO" --user root --exec sh -c \
-  'umask 022; cat > /usr/local/bin/wsl-migrate && chmod 0755 /usr/local/bin/wsl-migrate' < "$SCRIPT_PATH" || fail "could not install wsl-migrate in the clone; recovery details follow" 
+  'set -e; umask 022; mkdir -p /usr/local/bin /etc/wsl-migrate; tmp=/usr/local/bin/.wsl-migrate.$; cat > "$tmp"; chmod 0755 "$tmp"; mv -f "$tmp" /usr/local/bin/wsl-migrate; printf "%s\\n" "$1" > /etc/wsl-migrate/previous-default' sh "$PREVIOUS_DEFAULT" < "$SCRIPT_PATH" || fail "could not install wsl-migrate in the clone; recovery details follow"
 UTILITY_INSTALLED=1
 
 if ! "$WSL_EXE" --distribution "$NEW_DISTRO" --user root --exec sh -c \
@@ -493,10 +493,11 @@ REPORT_FILE=$BACKUP_FILE.migration.txt
   printf 'Clone distro: %s\n' "$NEW_DISTRO"
   printf 'Clone WSL version: %s\n' "$IMPORTED_WSL_VERSION"
   printf 'Install location: %s\n' "$INSTALL_LOCATION"
+  printf 'Previous default distro: %s\n' "$PREVIOUS_DEFAULT"
   printf 'Completed at (UTC): %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   printf 'Export SHA-256: %s\n' "$EXPORT_SHA256"
   printf 'Tar archive validation: passed\n'
-  printf 'Root filesystem and default-user checks: passed\n'
+  printf 'Root filesystem, default-user, key configuration, and home/Docker content checks: passed\n'
   printf 'SSH host keys regenerated: %s\n' "$REFRESH_SSH_KEYS"
 } > "$REPORT_FILE"
 MIGRATION_COMPLETE=1
@@ -510,6 +511,8 @@ echo "Migration report: $REPORT_FILE"
 echo "Export SHA-256: $EXPORT_SHA256"
 echo "Install location: $INSTALL_LOCATION"
 echo "The cloned /etc/wsl.conf and default user are preserved."
+echo "The actual previous default distro was: $PREVIOUS_DEFAULT"
+echo "Regular file contents under /home and /var/lib/docker were compared."
 echo "SSH host keys regenerated: $REFRESH_SSH_KEYS"
 echo "Start the clone with: wsl.exe --distribution $NEW_DISTRO"
 printf 'Set the clone as default now? [y/N] '
@@ -518,7 +521,7 @@ case "$switch_answer" in
   y|Y|yes|YES)
     "$WSL_EXE" --set-default "$NEW_DISTRO"
     echo "Default WSL distro set to $NEW_DISTRO."
-    echo "To restore the previous default: wsl-migrate --rollback $CURRENT_DISTRO"
+    echo "To restore the actual previous default: wsl-migrate --rollback $PREVIOUS_DEFAULT"
     ;;
   *) echo "Default distro was not changed." ;;
 esac
