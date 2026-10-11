@@ -6,6 +6,7 @@ REPO_DIR=$(CDPATH='' cd -- "$SCRIPT_DIR/.." && pwd)
 ROOTFS="$REPO_DIR/rootfs"
 ARCHIVE="$REPO_DIR/alpine.tar.gz"
 OUTPUT="$REPO_DIR/alpine-wsl.tar.gz"
+BUILD_RELEASE_TAG=${BUILD_RELEASE_TAG:-local}
 WSL_USERNAME=${WSL_USERNAME:-alpine}
 WSL_WINDOWS_VERSION=${WSL_WINDOWS_VERSION:-windows10}
 case "$WSL_WINDOWS_VERSION" in
@@ -77,7 +78,8 @@ mkdir -p "$ROOTFS/usr/local/sbin"
 cp "$SCRIPT_DIR/wsl-start-docker.sh" "$ROOTFS/usr/local/sbin/wsl-start-docker"
 mkdir -p "$ROOTFS/usr/local/bin"
 cp "$SCRIPT_DIR/wsl-migrate.sh" "$ROOTFS/usr/local/bin/wsl-migrate"
-chmod 0755 "$ROOTFS/usr/local/sbin/wsl-start-docker" "$ROOTFS/usr/local/bin/wsl-migrate"
+cp "$SCRIPT_DIR/wsl-update.sh" "$ROOTFS/usr/local/bin/wsl-update"
+chmod 0755 "$ROOTFS/usr/local/sbin/wsl-start-docker" "$ROOTFS/usr/local/bin/wsl-migrate" "$ROOTFS/usr/local/bin/wsl-update"
 chmod +x "$ROOTFS/setup.sh"
 
 echo "mount virtual filesystems"
@@ -96,6 +98,7 @@ mkdir -p "$ROOTFS/etc"
   printf 'Alpine version: %s\n' "$LATEST_VERSION"
   printf 'Source commit: %s\n' "$BUILD_COMMIT"
   printf 'Windows target: %s\n' "$WSL_WINDOWS_VERSION"
+  printf 'Release tag: %s\n' "$BUILD_RELEASE_TAG"
   printf 'Built at (UTC): %s\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 } > "$ROOTFS/etc/alpine-wsl-build"
 
