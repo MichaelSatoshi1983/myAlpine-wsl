@@ -189,6 +189,9 @@ if distro_is_registered "$NEW_DISTRO"; then
   if [ "$RESUME" -eq 1 ]; then CLONE_IMPORTED=1
   else fail "new distro name is already registered in WSL: $NEW_DISTRO"; fi
 fi
+if [ "$RESUME" -eq 1 ] && [ "$CLONE_IMPORTED" -eq 0 ] && [ -e "$INSTALL_LOCATION" ]; then
+  fail "resume install path already exists but target is not registered; choose another --install-location and keep the partial data"
+fi
 SOURCE_WSL_VERSION=$(distro_wsl_version "$SOURCE_DISTRO")
 case "$SOURCE_WSL_VERSION" in 1|2) ;; *) fail "could not detect the source WSL version; no distro was stopped";; esac
 TARGET_WSL_VERSION=$SOURCE_WSL_VERSION
@@ -413,6 +416,54 @@ if ! "$WSL_EXE" --distribution "$NEW_DISTRO" --user root --exec sh -c \
   fail "post-import root filesystem checks failed"
 fi
 "$WSL_EXE" --distribution "$NEW_DISTRO" --exec id -un >/dev/null || fail "the clone's configured default user could not run a command"
+
+verify_archive_file() {
+  verify_path=$1
+  verify_required=$2
+  archive_member=$(tar -tf "$BACKUP_FILE" | awk -v p="$verify_path" '$0 == "./" p || $0 == p {print; exit}')
+  if [ -z "$archive_member" ]; then
+    [ "$verify_required" -eq 0 ] || fail "required source file is missing from export: /$verify_path"
+    return
+  fi
+  archive_hash=$(tar -xOf "$BACKUP_FILE" "$archive_member" | sha256sum | awk '{print $1}')
+  clone_hash_line=$("$WSL_EXE" --distribution "$NEW_DISTRO" --user root --exec sha256sum "/$verify_path" 2>/dev/null) || fail "could not hash /$verify_path inside the clone"
+  clone_hash=$(printf '%s\n' "$clone_hash_line" | awk 'NR==1 {print $1}' | tr -d '\r')
+  [ -n "$archive_hash" ] && [ "$archive_hash" = "$clone_hash" ] || fail "export and clone differ for /$verify_path"
+}
+echo "Comparing important configuration files with the export"
+verify_archive_file etc/passwd 1
+verify_archive_file etc/group 1
+verify_archive_file etc/wsl.conf 1
+verify_archive_file etc/shadow 0
+verify_archive_file etc/docker/daemon.json 0
+
+echo "Comparing /home and Docker persistent file contents with the source manifest"
+# shellcheck disable=SC2016
+"$WSL_EXE" --distribution "$NEW_DISTRO" --user root --exec sh -c '
+  if [ -x /etc/init.d/docker ] && command -v rc-service >/dev/null 2>&1; then
+    rc-service --nodeps --ifstarted docker stop || exit 40
+  elif command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet docker; then
+    systemctl stop docker || exit 41
+  fi
+  command -v sha256sum >/dev/null 2>&1 || exit 42
+  for root in /home /var/lib/docker; do
+    if [ -d "$root" ]; then
+      printf "DIR %s\n" "$root"
+      find "$root" -type f -exec sha256sum "{}" \;
+      find "$root" -type l -exec sh -c '\''for path do printf "LINK %s -> %s\n" "$path" "$(readlink "$path")"; done'\'' sh "{}" \;
+    else
+      printf "MISSING %s\n" "$root"
+    fi
+  done
+' > "$BACKUP_FILE.clone-content-manifest.raw" || fail "could not scan clone home and Docker data"
+tr -d '\r' < "$BACKUP_FILE.clone-content-manifest.raw" | LC_ALL=C sort > "$BACKUP_FILE.clone-content-manifest"
+rm -f -- "$BACKUP_FILE.clone-content-manifest.raw"
+if ! cmp -s "$CONTENT_MANIFEST" "$BACKUP_FILE.clone-content-manifest"; then
+  echo "Differences were found in /home or Docker persistent data:" >&2
+  diff -u "$CONTENT_MANIFEST" "$BACKUP_FILE.clone-content-manifest" | sed -n '1,80p' >&2 || :
+  fail "content verification found differences; keep the archive and review the clone before using it"
+fi
+rm -f -- "$BACKUP_FILE.clone-content-manifest"
 
 load_distro_list || fail "could not verify imported distro registration"
 IMPORTED_WSL_VERSION=$(distro_wsl_version "$NEW_DISTRO")
