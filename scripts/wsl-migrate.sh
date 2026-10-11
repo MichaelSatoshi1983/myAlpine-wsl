@@ -87,13 +87,12 @@ if [ -z "$INSTALL_LOCATION" ]; then
 fi
 case "$BACKUP_DIR" in /mnt/[A-Za-z]/*) ;; *) fail "backup directory must be on a mounted Windows drive, such as /mnt/c/Users/...";; esac
 case "$INSTALL_LOCATION" in /mnt/[A-Za-z]/*) ;; *) fail "install location must be on a mounted Windows drive, such as /mnt/c/Users/...";; esac
-BACKUP_DIR=$(mkdir -p "$BACKUP_DIR" && CDPATH='' cd -- "$BACKUP_DIR" && pwd)
 [ ! -e "$INSTALL_LOCATION" ] || fail "install location already exists; choose an empty, unused path: $INSTALL_LOCATION"
 WINDOWS_BACKUP_DIR=$(wslpath -w "$BACKUP_DIR")
 WINDOWS_INSTALL_LOCATION=$(wslpath -w "$INSTALL_LOCATION")
 timestamp=$(date -u +%Y%m%dT%H%M%SZ)
 BACKUP_FILE=$BACKUP_DIR/$safe_name-$timestamp.tar
-WINDOWS_BACKUP=$WINDOWS_BACKUP_DIR\$safe_name-$timestamp.tar
+WINDOWS_BACKUP=$(wslpath -w "$BACKUP_FILE")
 [ ! -e "$BACKUP_FILE" ] || fail "backup file already exists: $BACKUP_FILE"
 
 if [ "$DRY_RUN" -eq 1 ]; then
@@ -137,6 +136,9 @@ Continue to the stop-source confirmation? [y/N]
 EOF
 IFS= read -r answer || answer=
 case "$answer" in y|Y|yes|YES) ;; *) echo "Cancelled."; exit 0 ;; esac
+BACKUP_DIR=$(mkdir -p "$BACKUP_DIR" && CDPATH='' cd -- "$BACKUP_DIR" && pwd)
+BACKUP_FILE=$BACKUP_DIR/$safe_name-$timestamp.tar
+WINDOWS_BACKUP=$(wslpath -w "$BACKUP_FILE")
 printf 'Terminate "%s" now, then export its complete filesystem? This closes its WSL processes. [y/N] ' "$SOURCE_DISTRO"
 IFS= read -r answer || answer=
 case "$answer" in
@@ -152,13 +154,17 @@ echo "Importing $NEW_DISTRO as WSL 2"
 "$WSL_EXE" --import "$NEW_DISTRO" "$WINDOWS_INSTALL_LOCATION" "$WINDOWS_BACKUP" --version 2
 
 echo "Installing wsl-migrate inside the clone"
-if ! cat "$0" | "$WSL_EXE" --distribution "$NEW_DISTRO" --user root --exec sh -c \
+SCRIPT_PATH=$0
+case "$SCRIPT_PATH" in */*) ;; *) SCRIPT_PATH=$(command -v "$SCRIPT_PATH") ;; esac
+[ -f "$SCRIPT_PATH" ] || fail "cannot locate the running script to install it in the clone"
+if ! cat "$SCRIPT_PATH" | "$WSL_EXE" --distribution "$NEW_DISTRO" --user root --exec sh -c \
   'umask 022; cat > /usr/local/bin/wsl-migrate && chmod 0755 /usr/local/bin/wsl-migrate'; then
   cat >&2 <<EOF
 The full clone was imported, but wsl-migrate could not be installed inside it.
 The clone and retained export are still available:
   Clone: $NEW_DISTRO
   Export: $BACKUP_FILE
+Install the script manually by piping it from the source distro into the clone as root.
 EOF
   exit 1
 fi
