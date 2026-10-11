@@ -229,13 +229,13 @@ Will not be copied:
 Actions after confirmation:
   1. Stop "$SOURCE_DISTRO".
   2. Export it to the retained tar backup shown above and validate the archive.
-  3. Import that archive as "$NEW_DISTRO" using WSL 2.
+  3. Import that archive as "$NEW_DISTRO" using WSL $TARGET_WSL_VERSION.
   4. Install wsl-migrate as /usr/local/bin/wsl-migrate inside the clone.
   5. Ask whether to set the clone as the default distro.
 
 Important risks and limitations:
   - This preserves the old distro; it does not upgrade it to the current
-    Release image. A WSL 1 source becomes WSL 2 and may behave differently.
+    Release image. WSL 1 and WSL 2 have different features and behavior; the clone keeps the source version.
   - Preserved boot commands or user settings may need adjustment for this
     Windows/WSL version.
   - Host identity files, including SSH host keys and /etc/machine-id, are copied.
