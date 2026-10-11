@@ -41,7 +41,7 @@ wsl-migrate --dry-run Alpine
 wsl-migrate Alpine
 ```
 
-Replace `Alpine` with the old distro name shown by `wsl -l -q` in PowerShell. Close programs in the old distro before migrating. The command asks before exporting and keeps a full WSL export under `%TEMP%\\myAlpine-wsl-backups` by default. The source distro stays registered. Check free disk space first; the export can be large.
+Replace `Alpine` with the old distro name shown by `wsl -l -q` in PowerShell. Close programs in the old distro before migrating. The command asks before exporting and keeps a full WSL export under `Documents\\myAlpine-wsl-backups` by default. The source distro stays registered. Check free disk space first; the export can be large.
 
 The command copies home files into the new default user's home, keeping the new image's `.zshrc`, `.zshenv`, and Oh My Zsh installation. The old Zsh files are saved in the migration report for review. Existing target files replaced by the copy are saved under `~/.wsl-migration-conflicts/`. Packages that cannot be installed are listed in the report.
 
