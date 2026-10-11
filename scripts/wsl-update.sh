@@ -108,7 +108,7 @@ if [ "$MODE" = check ]; then
   exit 0
 fi
 
-WINDOWS_ROOT=$(printenv SystemRoot 2>/dev/null || true)
+WINDOWS_ROOT=$(printenv SYSTEMROOT 2>/dev/null || printenv SystemRoot 2>/dev/null || true)
 if [ -z "$WINDOWS_ROOT" ]; then
   fail "could not read the Windows system directory"
 fi
