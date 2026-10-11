@@ -218,13 +218,47 @@ if tar -tf "$BACKUP_FILE" | grep -Fxq "${ARCHIVE_PREFIX}etc/apk/world"; then
   echo "Refreshing Alpine package indexes"
   if sudo apk update >> "$REPORT_DIR/apk.log" 2>&1; then
     while IFS= read -r package || [ -n "$package" ]; do
-      case "$package" in
-        ''|\#*) continue ;;
-        *[!A-Za-z0-9_.+@=<>~^:-]*)
-          printf '%s (unsupported world entry)\n' "$package" >> "$REPORT_DIR/packages-not-installed.txt"
-          continue
-          ;;
-      esac
+      if ! printf '%s\n' "$package" | grep -Eq '^[[:alnum:]_.+@=<>~^:-]+
+      if sudo apk add "$package" >> "$REPORT_DIR/apk.log" 2>&1; then
+        printf '%s\n' "$package" >> "$REPORT_DIR/packages-installed.txt"
+      else
+        printf '%s\n' "$package" >> "$REPORT_DIR/packages-not-installed.txt"
+      fi
+    done < "$STAGING_DIR/apk-world"
+  else
+    echo "apk update failed; no packages were installed" >> "$REPORT_DIR/apk.log"
+    cp "$STAGING_DIR/apk-world" "$REPORT_DIR/packages-not-installed.txt"
+  fi
+fi
+
+cat > "$REPORT_DIR/README.txt" <<EOF
+Migration from: $SOURCE_DISTRO
+Source user: $SOURCE_USER
+Target distro: $CURRENT_DISTRO
+Target user: $TARGET_USER
+Full source export: $BACKUP_FILE
+
+Home files were copied. Existing target files replaced during the copy are
+saved in $TARGET_HOME/.wsl-migration-conflicts/$timestamp.
+The release-managed .zshrc, .zshenv, and Oh My Zsh installation were kept.
+The source .zshrc and .zshenv, when present, are saved in this report for review.
+Package results are listed in packages-installed.txt and
+packages-not-installed.txt.
+
+System configuration, custom software outside the home directory, and Docker
+images, containers, and volumes were not copied. The source distro was not
+unregistered.
+EOF
+
+echo "Migration complete."
+echo "Full backup: $BACKUP_FILE"
+echo "Report: $REPORT_DIR/README.txt"
+echo "Review $REPORT_DIR/packages-not-installed.txt and any saved shell configuration."
+echo "The source distro remains registered and unchanged."
+; then
+        printf '%s (unsupported world entry)\n' "$package" >> "$REPORT_DIR/packages-not-installed.txt"
+        continue
+      fi
       if sudo apk add "$package" >> "$REPORT_DIR/apk.log" 2>&1; then
         printf '%s\n' "$package" >> "$REPORT_DIR/packages-installed.txt"
       else
