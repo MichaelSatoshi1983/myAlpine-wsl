@@ -64,12 +64,16 @@ RELEASES_JSON=$(curl -fsSL \
   -H 'X-GitHub-Api-Version: 2022-11-28' \
   "$RELEASES_API") || fail "could not reach the GitHub Releases API"
 
+# The jq program uses jq's $pattern variable, not shell expansion.
+# shellcheck disable=SC2016
 LATEST_RELEASE=$(printf '%s\n' "$RELEASES_JSON" | jq -c --arg pattern "$TAG_PATTERN" \
   '[.[] | select(.draft == false and .prerelease == false) | select(.tag_name | test($pattern))] | first // empty' 2>/dev/null || true)
 [ -n "$LATEST_RELEASE" ] || fail "no published Release found for $PLATFORM"
 
 LATEST_TAG=$(printf '%s\n' "$LATEST_RELEASE" | jq -r '.tag_name')
 PUBLISHED_AT=$(printf '%s\n' "$LATEST_RELEASE" | jq -r '.published_at // "unknown"')
+# The jq program uses jq's $name variable, not shell expansion.
+# shellcheck disable=SC2016
 ASSET_DIGEST=$(printf '%s\n' "$LATEST_RELEASE" | jq -r --arg name "$ASSET_NAME" \
   '[.assets[] | select(.name == $name) | .digest] | first // empty')
 printf 'Installed Release: '
@@ -171,9 +175,8 @@ printf 'Verified archive saved to: %s\n' "$ARCHIVE_WIN"
 
 show_manual_steps() {
   printf '\nRun these commands in PowerShell to import the new distro and migrate from the current one:\n'
-  printf '  $ReleaseTag = "%s"\n' "$LATEST_TAG"
-  printf '  wsl --import "$ReleaseTag" "%s" "%s" --version 2\n' "$INSTALL_DIR_WIN" "$ARCHIVE_WIN"
-  printf '  wsl -d "$ReleaseTag" -u root --exec /usr/local/bin/wsl-migrate "%s"\n' "$CURRENT_DISTRO"
+  printf '  wsl --import "%s" "%s" "%s" --version 2\n' "$LATEST_TAG" "$INSTALL_DIR_WIN" "$ARCHIVE_WIN"
+  printf '  wsl -d "%s" -u root --exec /usr/local/bin/wsl-migrate "%s"\n' "$LATEST_TAG" "$CURRENT_DISTRO"
   printf '\nThe old distro remains registered. The migration script will show its overview and ask before changing data.\n'
 }
 
